@@ -1,5 +1,6 @@
 import type {
   AuthResponse,
+  DependencyType,
   LoginRequest,
   RegisterRequest,
   TaskGraph,
@@ -85,7 +86,8 @@ export const api = {
   createTask: (body: TaskRequest) => req<TaskResponse>('POST', '/api/tasks', { body }),
   updateTask: (id: number, body: TaskRequest) => req<TaskResponse>('PUT', `/api/tasks/${id}`, { body }),
   deleteTask: (id: number) => req<void>('DELETE', `/api/tasks/${id}`),
-  bind: (taskId: number, parentId: number) => req<TaskResponse[]>('PATCH', '/api/tasks/bind', { query: { taskId, parentId } }),
+  bind: (taskId: number, parentId: number, type?: DependencyType) =>
+    req<TaskResponse[]>('PATCH', '/api/tasks/bind', { query: { taskId, parentId, ...(type ? { type } : {}) } }),
   unbind: (taskId: number, parentId: number) => req<TaskResponse[]>('PATCH', '/api/tasks/unbind', { query: { taskId, parentId } }),
   toggleStatus: (id: number) => req<TaskResponse>('PATCH', `/api/tasks/${id}/toggle-status`),
   calcDuration: (id: number) => req<number>('GET', `/api/graph/tasks/${id}/calculate-duration`),

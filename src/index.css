@@ -375,6 +375,10 @@ button, input, textarea { font-family: inherit; }
 .hint .icon { color: var(--accent-2); }
 
 .picker { margin-top: 9px; display: flex; flex-direction: column; gap: 8px; }
+.picker__types { display: flex; gap: 6px; }
+.picker__type { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 10px; border-radius: 9px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted, var(--text)); cursor: pointer; font-size: 12.5px; transition: all .14s ease; }
+.picker__type:hover { background: var(--surface-3); }
+.picker__type.is-active { background: var(--surface-3); border-color: rgba(16, 185, 129, .55); color: var(--text); }
 .picker__list { display: flex; flex-direction: column; gap: 5px; max-height: 230px; overflow-y: auto; padding-right: 2px; }
 .picker__item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 9px; text-align: left; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); cursor: pointer; font-size: 13px; transition: all .14s ease; }
 .picker__item:hover { background: var(--surface-3); border-color: rgba(16, 185, 129, .4); }

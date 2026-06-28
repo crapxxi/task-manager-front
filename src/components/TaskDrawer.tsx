@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from '../icons';
 import { api } from '../api';
 import { useTasks, useUI } from '../state';
-import type { Task } from '../types';
+import type { DependencyType, Task } from '../types';
 import { AdvanceButton, StatusBadge, StatusDot } from './ui';
 
 export function TaskDrawer() {
@@ -186,6 +186,7 @@ function AddPrerequisite({ task }: { task: Task }) {
   const { tasks, prerequisitesOf, descendants, bind } = useTasks();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [type, setType] = useState<DependencyType>('STRICT_PREREQUISITE');
 
   if (task.status !== 'TODO') {
     return (
@@ -210,11 +211,31 @@ function AddPrerequisite({ task }: { task: Task }) {
       </button>
       {open && (
         <div className="picker">
+          <div className="picker__types">
+            <button
+              type="button"
+              className={`picker__type ${type === 'STRICT_PREREQUISITE' ? 'is-active' : ''}`}
+              onClick={() => setType('STRICT_PREREQUISITE')}
+              title="Must be done first — blocks this task"
+            >
+              <Icon name="lock" />
+              Required
+            </button>
+            <button
+              type="button"
+              className={`picker__type ${type === 'OPTIONAL_LINK' ? 'is-active' : ''}`}
+              onClick={() => setType('OPTIONAL_LINK')}
+              title="Related, but does not block this task"
+            >
+              <Icon name="link" />
+              Optional
+            </button>
+          </div>
           <input
             className="input input--sm"
             type="search"
             autoFocus
-            placeholder="Find a task to require…"
+            placeholder={type === 'OPTIONAL_LINK' ? 'Find a task to link…' : 'Find a task to require…'}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -225,7 +246,7 @@ function AddPrerequisite({ task }: { task: Task }) {
                   key={c.id}
                   className="picker__item"
                   onClick={async () => {
-                    if (await bind(task.id, c.id)) { setOpen(false); setQuery(''); }
+                    if (await bind(task.id, c.id, type)) { setOpen(false); setQuery(''); }
                   }}
                 >
                   <StatusDot status={c.status} />

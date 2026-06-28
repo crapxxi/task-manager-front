@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { api, clearToken, getToken, setToken, UNAUTHORIZED_EVENT } from './api';
-import type { GraphEdge, RegisterRequest, Task, TaskRequest } from './types';
+import type { DependencyType, GraphEdge, RegisterRequest, Task, TaskRequest } from './types';
 
 /* ============================================================
    Theme
@@ -174,7 +174,7 @@ interface TasksCtx {
   create: (body: TaskRequest) => Promise<void>;
   update: (id: number, body: TaskRequest) => Promise<void>;
   remove: (id: number) => Promise<boolean>;
-  bind: (taskId: number, parentId: number) => Promise<boolean>;
+  bind: (taskId: number, parentId: number, type?: DependencyType) => Promise<boolean>;
   unbind: (taskId: number, parentId: number) => Promise<boolean>;
   toggle: (id: number) => Promise<boolean>;
 }
@@ -265,7 +265,11 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   const update = useCallback(async (id: number, body: TaskRequest) => { await api.updateTask(id, body); await reload(); }, [reload]);
 
   const remove = useCallback((id: number) => run(() => api.deleteTask(id), 'Task deleted'), [run]);
-  const bind = useCallback((taskId: number, parentId: number) => run(() => api.bind(taskId, parentId), 'Prerequisite added'), [run]);
+  const bind = useCallback(
+    (taskId: number, parentId: number, type?: DependencyType) =>
+      run(() => api.bind(taskId, parentId, type), type === 'OPTIONAL_LINK' ? 'Optional link added' : 'Prerequisite added'),
+    [run],
+  );
   const unbind = useCallback((taskId: number, parentId: number) => run(() => api.unbind(taskId, parentId), 'Dependency removed'), [run]);
   const toggle = useCallback((id: number) => run(() => api.toggleStatus(id), 'Status updated'), [run]);
 
