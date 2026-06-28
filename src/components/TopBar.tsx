@@ -27,7 +27,7 @@ function useClock() {
 
 export function TopBar() {
   const { openCreate } = useUI();
-  const { username } = useAuth();
+  const { username, name } = useAuth();
   const { tasks, status } = useTasks();
   const now = useClock();
 
@@ -57,7 +57,7 @@ export function TopBar() {
       <div className="topbar__lead">
         <div className="topbar__brandm" title="Foundry"><BrandGlyph size={18} /></div>
         <div style={{ minWidth: 0 }}>
-          <div className="topbar__greeting">{greetingFor(now.getHours())}{username ? `, ${username}` : ''}</div>
+          <div className="topbar__greeting">{greetingFor(now.getHours())}{(name || username) ? `, ${name || username}` : ''}</div>
           <div className="topbar__sub">{sub}</div>
         </div>
       </div>

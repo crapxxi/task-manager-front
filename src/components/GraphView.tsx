@@ -288,8 +288,11 @@ function GraphNode({ task, p, selected, dim, onHover }: {
       className={`gnode gnode--${task.status.toLowerCase()} ${task.isBlocked ? 'gnode--blocked' : ''} ${selected ? 'is-selected' : ''} ${dim ? 'is-dim' : ''}`}
       data-node={task.id}
       transform={`translate(${p.x},${p.y})`}
-      onMouseEnter={() => onHover(task.id)}
-      onMouseLeave={() => onHover(null)}
+      // Mouse only: on touch a tap fires a synthetic mouseenter with no matching
+      // mouseleave, leaving the graph dimmed around the last node. Touch focus
+      // comes from selectedId instead, which clears when the drawer closes.
+      onPointerEnter={(e) => { if (e.pointerType === 'mouse') onHover(task.id); }}
+      onPointerLeave={(e) => { if (e.pointerType === 'mouse') onHover(null); }}
     >
       <title>{task.title}</title>
       <rect className="gnode__box" x={-NODE_W / 2} y={-NODE_H / 2} width={NODE_W} height={NODE_H} rx={14} />

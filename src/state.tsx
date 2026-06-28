@@ -67,10 +67,12 @@ export const useToast = () => {
    Auth (JWT)
    ============================================================ */
 const USERNAME_KEY = 'tm.username';
+const NAME_KEY = 'tm.name';
 
 interface AuthCtx {
   token: string | null;
   username: string | null;
+  name: string | null;
   isAuthenticated: boolean;
   /** True after the server invalidated an existing session (token expired). */
   sessionExpired: boolean;
@@ -83,32 +85,49 @@ const AuthContext = createContext<AuthCtx | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState<string | null>(() => getToken());
   const [username, setUsername] = useState<string | null>(() => localStorage.getItem(USERNAME_KEY));
+  const [name, setName] = useState<string | null>(() => localStorage.getItem(NAME_KEY));
   const [sessionExpired, setSessionExpired] = useState(false);
 
   // Mirrors `token` so the (mount-once) unauthorized listener can read it fresh.
   const tokenRef = useRef(token);
   useEffect(() => { tokenRef.current = token; }, [token]);
 
-  const login = useCallback(async (user: string, password: string) => {
-    const res = await api.login({ username: user, password });
-    setToken(res.token);
-    localStorage.setItem(USERNAME_KEY, res.username);
-    setTokenState(res.token);
-    setUsername(res.username);
+  // Pull the profile after auth so the UI can greet by first name; non-fatal.
+  const hydrate = useCallback(async (newToken: string, fallbackUsername: string) => {
+    setToken(newToken);
+    setTokenState(newToken);
     setSessionExpired(false);
+    try {
+      const me = await api.me();
+      localStorage.setItem(USERNAME_KEY, me.username);
+      localStorage.setItem(NAME_KEY, me.name ?? '');
+      setUsername(me.username);
+      setName(me.name ?? null);
+    } catch {
+      // Profile fetch failed — keep the session and just greet by username.
+      localStorage.setItem(USERNAME_KEY, fallbackUsername);
+      setUsername(fallbackUsername);
+    }
   }, []);
 
+  const login = useCallback(async (user: string, password: string) => {
+    const res = await api.login({ username: user, password });
+    await hydrate(res.token, res.username);
+  }, [hydrate]);
+
+  // Register now returns a token directly — no second round-trip to log in.
   const register = useCallback(async (data: RegisterRequest) => {
-    // Register returns the user but no token, so log in straight after to get one.
-    await api.register(data);
-    await login(data.username, data.password);
-  }, [login]);
+    const res = await api.register(data);
+    await hydrate(res.token, res.username);
+  }, [hydrate]);
 
   const logout = useCallback(() => {
     clearToken();
     localStorage.removeItem(USERNAME_KEY);
+    localStorage.removeItem(NAME_KEY);
     setTokenState(null);
     setUsername(null);
+    setName(null);
   }, []);
 
   // The api layer fires this (and clears the token) when the server rejects it.
@@ -117,8 +136,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const wasAuthenticated = tokenRef.current != null;
       clearToken();
       localStorage.removeItem(USERNAME_KEY);
+      localStorage.removeItem(NAME_KEY);
       setTokenState(null);
       setUsername(null);
+      setName(null);
       if (wasAuthenticated) setSessionExpired(true);
     };
     window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
@@ -126,8 +147,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthCtx>(
-    () => ({ token, username, isAuthenticated: !!token, sessionExpired, login, register, logout }),
-    [token, username, sessionExpired, login, register, logout],
+    () => ({ token, username, name, isAuthenticated: !!token, sessionExpired, login, register, logout }),
+    [token, username, name, sessionExpired, login, register, logout],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

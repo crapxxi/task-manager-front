@@ -91,9 +91,11 @@ export interface AuthResponse {
   token: string;
 }
 
-/** POST /api/auth/register → the created user (no token; log in afterwards). */
+/** GET /api/auth/me → the current user's profile. */
 export interface UserResponse {
   id: number;
+  name: string;
+  surname: string | null;
   username: string;
   role: UserRole;
 }

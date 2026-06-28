@@ -21,8 +21,9 @@ export function Sidebar() {
   const { view, setView } = useUI();
   const { theme, toggle } = useTheme();
   const { reload } = useTasks();
-  const { username, logout } = useAuth();
-  const initials = (username ?? '?').replace(/[^a-z0-9]/gi, '').slice(0, 2).toUpperCase() || '?';
+  const { username, name, logout } = useAuth();
+  const display = name || username;
+  const initials = (display ?? '?').replace(/[^a-z0-9]/gi, '').slice(0, 2).toUpperCase() || '?';
 
   return (
     <aside className="sidebar">
@@ -43,7 +44,7 @@ export function Sidebar() {
         <button className="nav__btn" title={username ? `Sign out (${username})` : 'Sign out'} aria-label="Sign out" onClick={logout}>
           <Icon name="logout" />
         </button>
-        <div className="avatar" title={username ?? ''}>{initials}</div>
+        <div className="avatar" title={display ?? ''}>{initials}</div>
       </div>
     </aside>
   );

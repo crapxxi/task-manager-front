@@ -77,15 +77,16 @@ async function req<T>(method: string, path: string, opts: { query?: Query; body?
 }
 
 export const api = {
-  register: (body: RegisterRequest) => req<UserResponse>('POST', '/api/auth/register', { body }),
+  register: (body: RegisterRequest) => req<AuthResponse>('POST', '/api/auth/register', { body }),
   login: (body: LoginRequest) => req<AuthResponse>('POST', '/api/auth/login', { body }),
+  me: () => req<UserResponse>('GET', '/api/auth/me'),
   getGraph: () => req<TaskGraph>('GET', '/api/graph/tasks'),
   getTasks: () => req<TaskResponse[]>('GET', '/api/tasks'),
   createTask: (body: TaskRequest) => req<TaskResponse>('POST', '/api/tasks', { body }),
   updateTask: (id: number, body: TaskRequest) => req<TaskResponse>('PUT', `/api/tasks/${id}`, { body }),
   deleteTask: (id: number) => req<void>('DELETE', `/api/tasks/${id}`),
-  bind: (taskId: number, parentId: number) => req<void>('PATCH', '/api/tasks/bind', { query: { taskId, parentId } }),
-  unbind: (taskId: number, parentId: number) => req<void>('PATCH', '/api/tasks/unbind', { query: { taskId, parentId } }),
-  toggleStatus: (id: number) => req<boolean>('PATCH', `/api/tasks/${id}/toggle-status`),
+  bind: (taskId: number, parentId: number) => req<TaskResponse[]>('PATCH', '/api/tasks/bind', { query: { taskId, parentId } }),
+  unbind: (taskId: number, parentId: number) => req<TaskResponse[]>('PATCH', '/api/tasks/unbind', { query: { taskId, parentId } }),
+  toggleStatus: (id: number) => req<TaskResponse>('PATCH', `/api/tasks/${id}/toggle-status`),
   calcDuration: (id: number) => req<number>('GET', `/api/graph/tasks/${id}/calculate-duration`),
 };
