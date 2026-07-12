@@ -9,7 +9,15 @@ import {
   type ReactNode,
 } from 'react';
 import { api, clearToken, getToken, setToken, UNAUTHORIZED_EVENT } from './api';
-import type { DependencyType, GraphEdge, RegisterRequest, Task, TaskRequest } from './types';
+import type {
+  DependencyType,
+  GraphEdge,
+  Project,
+  ProjectRequest,
+  RegisterRequest,
+  Task,
+  TaskRequest,
+} from './types';
 
 /* ============================================================
    Theme
@@ -19,7 +27,7 @@ interface ThemeCtx { theme: Theme; toggle: () => void }
 const ThemeContext = createContext<ThemeCtx | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('tm.theme') as Theme) || 'dark');
+  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('tm.theme') as Theme) || 'light');
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem('tm.theme', theme);
@@ -115,7 +123,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await hydrate(res.token, res.username);
   }, [hydrate]);
 
-  // Register now returns a token directly — no second round-trip to log in.
   const register = useCallback(async (data: RegisterRequest) => {
     const res = await api.register(data);
     await hydrate(res.token, res.username);
@@ -159,9 +166,116 @@ export const useAuth = () => {
 };
 
 /* ============================================================
-   Tasks (data + actions)
+   Projects (list + current selection)
    ============================================================ */
 type LoadStatus = 'loading' | 'ready' | 'error';
+
+const CURRENT_PROJECT_KEY = 'tm.project.';
+
+interface ProjectsCtx {
+  status: LoadStatus;
+  projects: Project[];
+  currentId: number | null;
+  current: Project | null;
+  selectProject: (id: number) => void;
+  reload: () => Promise<void>;
+  create: (body: ProjectRequest) => Promise<void>;
+  update: (id: number, body: ProjectRequest) => Promise<void>;
+  remove: (id: number) => Promise<boolean>;
+}
+const ProjectsContext = createContext<ProjectsCtx | null>(null);
+
+export function ProjectsProvider({ children }: { children: ReactNode }) {
+  const { push } = useToast();
+  const { username } = useAuth();
+  const storageKey = CURRENT_PROJECT_KEY + (username ?? 'anon');
+
+  const [status, setStatus] = useState<LoadStatus>('loading');
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [currentId, setCurrentId] = useState<number | null>(() => {
+    const raw = localStorage.getItem(storageKey);
+    return raw ? Number(raw) : null;
+  });
+
+  // Keep the selection valid: fall back to the first project, or none.
+  const settle = useCallback((list: Project[], preferred: number | null) => {
+    const valid = preferred != null && list.some((p) => p.id === preferred) ? preferred : list[0]?.id ?? null;
+    setCurrentId(valid);
+    if (valid != null) localStorage.setItem(storageKey, String(valid));
+    else localStorage.removeItem(storageKey);
+  }, [storageKey]);
+
+  const reload = useCallback(async () => {
+    try {
+      const list = await api.getProjects();
+      setProjects(list);
+      setCurrentId((prev) => {
+        const valid = prev != null && list.some((p) => p.id === prev) ? prev : list[0]?.id ?? null;
+        if (valid != null) localStorage.setItem(storageKey, String(valid));
+        else localStorage.removeItem(storageKey);
+        return valid;
+      });
+      setStatus('ready');
+    } catch (err) {
+      console.error('Failed to load projects', err);
+      setStatus('error');
+    }
+  }, [storageKey]);
+
+  useEffect(() => { void reload(); }, [reload]);
+
+  const selectProject = useCallback((id: number) => {
+    setCurrentId(id);
+    localStorage.setItem(storageKey, String(id));
+  }, [storageKey]);
+
+  const create = useCallback(async (body: ProjectRequest) => {
+    const created = await api.createProject(body);
+    const list = await api.getProjects().catch(() => null);
+    if (list) setProjects(list);
+    else setProjects((ps) => [...ps, created]);
+    // Jump straight into the new project.
+    setCurrentId(created.id);
+    localStorage.setItem(storageKey, String(created.id));
+    setStatus('ready');
+  }, [storageKey]);
+
+  const update = useCallback(async (id: number, body: ProjectRequest) => {
+    const updated = await api.updateProject(id, body);
+    setProjects((ps) => ps.map((p) => (p.id === id ? updated : p)));
+  }, []);
+
+  const remove = useCallback(async (id: number): Promise<boolean> => {
+    try {
+      await api.deleteProject(id);
+      const list = projects.filter((p) => p.id !== id);
+      setProjects(list);
+      settle(list, currentId === id ? null : currentId);
+      push('Project deleted', 'success');
+      return true;
+    } catch (err) {
+      push((err as Error).message, 'error');
+      return false;
+    }
+  }, [projects, currentId, settle, push]);
+
+  const current = useMemo(() => projects.find((p) => p.id === currentId) ?? null, [projects, currentId]);
+
+  const value = useMemo<ProjectsCtx>(
+    () => ({ status, projects, currentId, current, selectProject, reload, create, update, remove }),
+    [status, projects, currentId, current, selectProject, reload, create, update, remove],
+  );
+  return <ProjectsContext.Provider value={value}>{children}</ProjectsContext.Provider>;
+}
+export const useProjects = () => {
+  const c = useContext(ProjectsContext);
+  if (!c) throw new Error('useProjects outside provider');
+  return c;
+};
+
+/* ============================================================
+   Tasks (data + actions, scoped to the current project)
+   ============================================================ */
 interface TasksCtx {
   status: LoadStatus;
   tasks: Task[];
@@ -171,8 +285,8 @@ interface TasksCtx {
   prerequisitesOf: (id: number) => Task[];
   dependentsOf: (id: number) => Task[];
   descendants: (id: number) => Set<number>;
-  create: (body: TaskRequest) => Promise<void>;
-  update: (id: number, body: TaskRequest) => Promise<void>;
+  create: (body: Omit<TaskRequest, 'projectId'>) => Promise<void>;
+  update: (id: number, body: Omit<TaskRequest, 'projectId'>) => Promise<void>;
   remove: (id: number) => Promise<boolean>;
   bind: (taskId: number, parentId: number, type?: DependencyType) => Promise<boolean>;
   unbind: (taskId: number, parentId: number) => Promise<boolean>;
@@ -182,37 +296,41 @@ const TasksContext = createContext<TasksCtx | null>(null);
 
 export function TasksProvider({ children }: { children: ReactNode }) {
   const { push } = useToast();
+  const { currentId } = useProjects();
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [edges, setEdges] = useState<GraphEdge[]>([]);
 
   const reload = useCallback(async () => {
+    if (currentId == null) {
+      setTasks([]);
+      setEdges([]);
+      setStatus('ready');
+      return;
+    }
     try {
-      const [graph, list] = await Promise.all([api.getGraph(), api.getTasks().catch(() => [])]);
-      const descById = new Map<number, string>();
-      const descByTitle = new Map<string, string>();
-      for (const t of list) {
-        if (t.id != null) descById.set(t.id, t.description ?? '');
-        descByTitle.set(t.title, t.description ?? '');
-      }
-      const merged: Task[] = graph.nodes.map((n) => ({
-        id: n.id,
-        title: n.title,
-        status: n.status,
-        durationHours: n.durationHours,
-        isBlocked: !!n.isBlocked,
-        description: descById.get(n.id) ?? descByTitle.get(n.title) ?? '',
-      }));
-      setTasks(merged);
+      // The task list carries descriptions; the graph carries the edges.
+      const [list, graph] = await Promise.all([api.getTasks(currentId), api.getGraph(currentId)]);
+      setTasks(list.map((t) => ({
+        id: t.id,
+        title: t.title,
+        description: t.description ?? '',
+        durationHours: t.durationHours,
+        status: t.status,
+        isBlocked: !!t.isBlocked,
+        complexity: t.complexity ?? 'MEDIUM',
+      })));
       setEdges(graph.edges);
       setStatus('ready');
     } catch (err) {
       console.error('Failed to load tasks', err);
       setStatus('error');
     }
-  }, []);
+  }, [currentId]);
 
+  // Show a spinner when switching projects, then load.
   useEffect(() => {
+    setStatus('loading');
     void reload();
   }, [reload]);
 
@@ -261,8 +379,17 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   );
 
   // create/update reload but stay silent so the form can show inline errors + its own toast.
-  const create = useCallback(async (body: TaskRequest) => { await api.createTask(body); await reload(); }, [reload]);
-  const update = useCallback(async (id: number, body: TaskRequest) => { await api.updateTask(id, body); await reload(); }, [reload]);
+  const create = useCallback(async (body: Omit<TaskRequest, 'projectId'>) => {
+    if (currentId == null) throw new Error('Create a project first');
+    await api.createTask({ ...body, projectId: currentId });
+    await reload();
+  }, [currentId, reload]);
+
+  const update = useCallback(async (id: number, body: Omit<TaskRequest, 'projectId'>) => {
+    if (currentId == null) throw new Error('Create a project first');
+    await api.updateTask(id, { ...body, projectId: currentId });
+    await reload();
+  }, [currentId, reload]);
 
   const remove = useCallback((id: number) => run(() => api.deleteTask(id), 'Task deleted'), [run]);
   const bind = useCallback(
@@ -288,7 +415,7 @@ export const useTasks = () => {
 /* ============================================================
    UI (view, selection, search, modals)
    ============================================================ */
-export type View = 'board' | 'graph';
+export type View = 'board' | 'graph' | 'plan';
 export interface ConfirmOptions { title: string; message: string; confirmLabel?: string }
 interface ConfirmRequest { opts: ConfirmOptions; resolve: (ok: boolean) => void }
 
@@ -304,6 +431,10 @@ interface UICtx {
   openCreate: () => void;
   openEdit: (task: Task) => void;
   closeForm: () => void;
+  projectForm: { project: Project | null } | null;
+  openCreateProject: () => void;
+  openEditProject: (project: Project) => void;
+  closeProjectForm: () => void;
   confirmRequest: ConfirmRequest | null;
   confirm: (opts: ConfirmOptions) => Promise<boolean>;
   resolveConfirm: (ok: boolean) => void;
@@ -315,6 +446,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [form, setForm] = useState<{ task: Task | null } | null>(null);
+  const [projectForm, setProjectForm] = useState<{ project: Project | null } | null>(null);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
 
   const setView = useCallback((v: View) => { setViewState(v); localStorage.setItem('tm.view', v); }, []);
@@ -323,6 +455,9 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const openCreate = useCallback(() => setForm({ task: null }), []);
   const openEdit = useCallback((task: Task) => setForm({ task }), []);
   const closeForm = useCallback(() => setForm(null), []);
+  const openCreateProject = useCallback(() => setProjectForm({ project: null }), []);
+  const openEditProject = useCallback((project: Project) => setProjectForm({ project }), []);
+  const closeProjectForm = useCallback(() => setProjectForm(null), []);
   const confirm = useCallback(
     (opts: ConfirmOptions) => new Promise<boolean>((resolve) => setConfirmRequest({ opts, resolve })),
     [],
@@ -333,8 +468,16 @@ export function UIProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<UICtx>(
-    () => ({ view, setView, selectedId, select, clearSelection, search, setSearch, form, openCreate, openEdit, closeForm, confirmRequest, confirm, resolveConfirm }),
-    [view, setView, selectedId, select, clearSelection, search, form, openCreate, openEdit, closeForm, confirmRequest, confirm, resolveConfirm],
+    () => ({
+      view, setView, selectedId, select, clearSelection, search, setSearch,
+      form, openCreate, openEdit, closeForm,
+      projectForm, openCreateProject, openEditProject, closeProjectForm,
+      confirmRequest, confirm, resolveConfirm,
+    }),
+    [view, setView, selectedId, select, clearSelection, search,
+      form, openCreate, openEdit, closeForm,
+      projectForm, openCreateProject, openEditProject, closeProjectForm,
+      confirmRequest, confirm, resolveConfirm],
   );
   return <UIContext.Provider value={value}>{children}</UIContext.Provider>;
 }

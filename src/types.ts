@@ -1,7 +1,37 @@
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'COMPLETED';
 export type DependencyType = 'STRICT_PREREQUISITE' | 'OPTIONAL_LINK';
+export type Complexity = 'EASY' | 'MEDIUM' | 'HARD';
 
-/** Shape returned by GET /api/tasks and the mutation endpoints. */
+export const COMPLEXITY_LABEL: Record<Complexity, string> = {
+  EASY: 'Easy',
+  MEDIUM: 'Medium',
+  HARD: 'Hard',
+};
+
+export const COMPLEXITY_ORDER: Complexity[] = ['EASY', 'MEDIUM', 'HARD'];
+
+/* ============================================================
+   Projects — every task lives inside a project
+   ============================================================ */
+
+/** GET /api/projects → element; also returned by create/update. */
+export interface Project {
+  id: number;
+  title: string;
+  description: string | null;
+}
+
+/** Body for POST/PUT /api/projects. */
+export interface ProjectRequest {
+  title: string;
+  description: string | null;
+}
+
+/* ============================================================
+   Tasks
+   ============================================================ */
+
+/** Shape returned by GET /api/v1/tasks/{projectId}/tasks and the mutation endpoints. */
 export interface TaskResponse {
   id: number;
   title: string;
@@ -9,16 +39,25 @@ export interface TaskResponse {
   durationHours: number;
   status: TaskStatus;
   isBlocked: boolean;
+  projectId: number;
+  complexity: Complexity;
 }
 
-/** Body for POST/PUT /api/tasks. */
+/** GET /api/v1/suggest/tasks/{projectId}/time → task + its earliest possible finish hour. */
+export interface TaskWithTime extends TaskResponse {
+  calculatedFinishHour: number;
+}
+
+/** Body for POST/PUT /api/v1/tasks — projectId and complexity are required by the backend. */
 export interface TaskRequest {
+  projectId: number;
   title: string;
   description: string | null;
   durationHours: number;
+  complexity: Complexity;
 }
 
-/** GET /api/graph/tasks → nodes. */
+/** GET /api/graph/tasks/all/{projectId} → nodes. */
 export interface GraphNode {
   id: number;
   title: string;
@@ -27,7 +66,7 @@ export interface GraphNode {
   isBlocked: boolean;
 }
 
-/** GET /api/graph/tasks → edges (source = prerequisite, target = dependent). */
+/** Graph edges (source = prerequisite, target = dependent). */
 export interface GraphEdge {
   id: number;
   sourceId: number;
@@ -48,7 +87,7 @@ export interface ApiError {
   message: string;
 }
 
-/** Client-side merged model: graph node (has id + live status) + description. */
+/** Client-side task model (the list endpoint already carries everything). */
 export interface Task {
   id: number;
   title: string;
@@ -56,6 +95,7 @@ export interface Task {
   durationHours: number;
   status: TaskStatus;
   isBlocked: boolean;
+  complexity: Complexity;
 }
 
 export const STATUS_LABEL: Record<TaskStatus, string> = {

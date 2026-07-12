@@ -1,6 +1,6 @@
 import { Icon } from '../icons';
 import { STATUS_LABEL, type Task, type TaskStatus } from '../types';
-import { useTasks, useUI } from '../state';
+import { useProjects, useTasks, useUI } from '../state';
 
 export function StatusDot({ status }: { status: TaskStatus }) {
   return <span className={`status-dot d-${status.toLowerCase()}`} />;
@@ -38,7 +38,7 @@ export function AdvanceButton({ task, small }: { task: Task; small?: boolean }) 
       );
     }
     return (
-      <button className={`btn btn--accent${sm}`} onClick={(e) => { e.stopPropagation(); void toggle(task.id); }}>
+      <button className={`btn btn--primary${sm}`} onClick={(e) => { e.stopPropagation(); void toggle(task.id); }}>
         <Icon name="play" />
         {small ? 'Start' : 'Start task'}
       </button>
@@ -56,7 +56,7 @@ export function LoadingState() {
   return (
     <div className="placeholder">
       <div className="spinner" />
-      <p className="placeholder__text">Loading your tasks…</p>
+      <p className="placeholder__text">Loading tasks…</p>
     </div>
   );
 }
@@ -65,10 +65,34 @@ export function EmptyState() {
   const { openCreate } = useUI();
   return (
     <div className="placeholder">
-      <div className="placeholder__art"><Icon name="layout" size={44} /></div>
       <h3 className="placeholder__title">No tasks yet</h3>
-      <p className="placeholder__text">Create your first task, then connect prerequisites to build a dependency graph.</p>
-      <button className="btn btn--accent" onClick={openCreate}><Icon name="plus" />Create a task</button>
+      <p className="placeholder__text">Create your first task. You can link tasks together later so one waits for another.</p>
+      <button className="btn btn--primary" onClick={openCreate}><Icon name="plus" />New task</button>
+    </div>
+  );
+}
+
+export function NoProjects() {
+  const { openCreateProject } = useUI();
+  return (
+    <div className="placeholder placeholder--page">
+      <h3 className="placeholder__title">Welcome!</h3>
+      <p className="placeholder__text">Tasks are grouped into projects. Create your first project to get started.</p>
+      <button className="btn btn--primary" onClick={openCreateProject}><Icon name="plus" />New project</button>
+    </div>
+  );
+}
+
+export function ProjectsError() {
+  const { reload } = useProjects();
+  return (
+    <div className="placeholder placeholder--page">
+      <div className="placeholder__art placeholder__art--warn"><Icon name="alert" size={36} /></div>
+      <h3 className="placeholder__title">Couldn’t load your projects</h3>
+      <p className="placeholder__text">
+        The server didn’t respond. Make sure the backend is running, then try again.
+      </p>
+      <button className="btn btn--primary" onClick={() => void reload()}><Icon name="refresh" />Retry</button>
     </div>
   );
 }
@@ -77,12 +101,10 @@ export function ConnectionError() {
   const { reload } = useTasks();
   return (
     <div className="placeholder">
-      <div className="placeholder__art placeholder__art--warn"><Icon name="alert" size={40} /></div>
-      <h3 className="placeholder__title">Can’t reach the API</h3>
-      <p className="placeholder__text">
-        No response from the backend. Start the Spring Boot app on :8080 — the dev server proxies <code>/api</code> to it.
-      </p>
-      <button className="btn btn--accent" onClick={() => void reload()}><Icon name="refresh" />Retry</button>
+      <div className="placeholder__art placeholder__art--warn"><Icon name="alert" size={36} /></div>
+      <h3 className="placeholder__title">Couldn’t load tasks</h3>
+      <p className="placeholder__text">The server didn’t respond. Check that the backend is running, then try again.</p>
+      <button className="btn btn--primary" onClick={() => void reload()}><Icon name="refresh" />Retry</button>
     </div>
   );
 }

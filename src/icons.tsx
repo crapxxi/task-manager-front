@@ -16,14 +16,12 @@ const PATHS: Record<string, string> = {
   alert: '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4M12 17h.01"/>',
   sum: '<path d="M18 7V5a1 1 0 0 0-1-1H6.5a.5.5 0 0 0-.4.8L12 12l-5.9 7.2a.5.5 0 0 0 .4.8H17a1 1 0 0 0 1-1v-2"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
-  board: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18M15 3v18"/>',
-  graph: '<path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>',
+  folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
   unlocks: '<path d="M15 10l5 5-5 5"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/>',
   link: '<path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><path d="M8 12h8"/>',
   fit: '<path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/>',
   zoomin: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M11 8v6M8 11h6"/>',
   zoomout: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3M8 11h6"/>',
-  layout: '<path d="M3 12h7l2 3 4-8 2 5h3"/>',
   user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
 };
@@ -45,19 +43,5 @@ export function Icon({ name, size, sw }: { name: IconName | string; size?: numbe
       aria-hidden="true"
       dangerouslySetInnerHTML={{ __html: PATHS[name] ?? '' }}
     />
-  );
-}
-
-/** Foundry brand glyph — three linked prerequisite nodes feeding one. Inherits currentColor. */
-export function BrandGlyph({ size = 21 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" aria-hidden="true">
-      <line x1="12" y1="15" x2="36" y2="15" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" />
-      <line x1="24" y1="15" x2="24" y2="36" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" />
-      <circle cx="12" cy="15" r="4.4" fill="currentColor" />
-      <circle cx="36" cy="15" r="4.4" fill="currentColor" />
-      <circle cx="24" cy="15" r="4.4" fill="currentColor" />
-      <circle cx="24" cy="36" r="4.4" fill="currentColor" />
-    </svg>
   );
 }

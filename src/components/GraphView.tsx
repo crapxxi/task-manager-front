@@ -8,7 +8,7 @@ import {
   type PointerEvent as RPointerEvent,
 } from 'react';
 import { Icon } from '../icons';
-import { useTasks, useUI } from '../state';
+import { useAuth, useProjects, useTasks, useUI } from '../state';
 import { computeLayout, edgePath, NODE_H, NODE_W, type XY } from '../lib/graph';
 import { STATUS_LABEL, type Task } from '../types';
 import { ConnectionError, EmptyState, LoadingState } from './ui';
@@ -21,9 +21,29 @@ type Drag =
 
 const truncate = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 
+/* Manually dragged node positions persist per user+project, so an
+   arranged graph comes back exactly as it was left. */
+function readPositions(key: string): Map<number, XY> {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return new Map();
+    return new Map(JSON.parse(raw) as [number, XY][]);
+  } catch {
+    return new Map();
+  }
+}
+function writePositions(key: string, positions: Map<number, XY>) {
+  try {
+    localStorage.setItem(key, JSON.stringify([...positions.entries()]));
+  } catch { /* storage unavailable — layout just recomputes next time */ }
+}
+
 export function GraphView() {
   const { status, tasks, edges } = useTasks();
   const { selectedId, select } = useUI();
+  const { username } = useAuth();
+  const { currentId } = useProjects();
+  const posKey = `tm.graph.pos.${username ?? 'anon'}.${currentId ?? 0}`;
   const svgRef = useRef<SVGSVGElement>(null);
 
   const sig = useMemo(() => tasks.map((t) => t.id).sort((a, b) => a - b).join(','), [tasks]);
@@ -39,13 +59,23 @@ export function GraphView() {
   const pinch = useRef<{ startDist: number; startK: number; gx: number; gy: number } | null>(null);
 
   // (Re)compute layout only when the set of nodes changes — keeps manual drags.
+  // Saved positions overlay the fresh layout, so the arrangement survives reloads.
   useEffect(() => {
     if (sig !== laidSig.current) {
       laidSig.current = sig;
-      setPositions(computeLayout(tasks, edges));
+      const layout = computeLayout(tasks, edges);
+      for (const [id, p] of readPositions(posKey)) if (layout.has(id)) layout.set(id, p);
+      setPositions(layout);
       needFit.current = true;
     }
-  }, [sig, tasks, edges]);
+  }, [sig, tasks, edges, posKey]);
+
+  // Persist the arrangement (debounced — drags update positions every frame).
+  useEffect(() => {
+    if (!positions.size) return;
+    const t = window.setTimeout(() => writePositions(posKey, positions), 400);
+    return () => window.clearTimeout(t);
+  }, [positions, posKey]);
 
   const fitToView = useCallback(() => {
     const svg = svgRef.current;
@@ -162,7 +192,7 @@ export function GraphView() {
     const dy = e.clientY - d.sy;
     // A finger jitters by several px during a "tap"; a 3px slop (fine for a mouse)
     // reads most taps as drags and swallows the node selection. Give touch/pen a
-    // larger slop so a tap still opens the task drawer on mobile.
+    // larger slop so a tap still opens the task panel on mobile.
     const slop = e.pointerType === 'mouse' ? 3 : 12;
     if (Math.abs(dx) + Math.abs(dy) > slop) d.moved = true;
     if (d.type === 'pan') {
@@ -214,7 +244,7 @@ export function GraphView() {
           <LegendSwatch color="var(--progress)" label="In progress" />
           <LegendSwatch color="var(--done)" label="Completed" />
           <LegendSwatch color="var(--blocked)" label="Blocked" />
-          <span className="legend__item"><span className="legend__line" />Prerequisite</span>
+          <span className="legend__item"><span className="legend__line" />Required</span>
           <span className="legend__item"><span className="legend__line legend__line--dash" />Optional</span>
         </div>
         <div className="gbtns">
@@ -290,15 +320,15 @@ function GraphNode({ task, p, selected, dim, onHover }: {
       transform={`translate(${p.x},${p.y})`}
       // Mouse only: on touch a tap fires a synthetic mouseenter with no matching
       // mouseleave, leaving the graph dimmed around the last node. Touch focus
-      // comes from selectedId instead, which clears when the drawer closes.
+      // comes from selectedId instead, which clears when the panel closes.
       onPointerEnter={(e) => { if (e.pointerType === 'mouse') onHover(task.id); }}
       onPointerLeave={(e) => { if (e.pointerType === 'mouse') onHover(null); }}
     >
       <title>{task.title}</title>
-      <rect className="gnode__box" x={-NODE_W / 2} y={-NODE_H / 2} width={NODE_W} height={NODE_H} rx={14} />
-      <rect className="gnode__bar" x={-NODE_W / 2 + 1.5} y={-NODE_H / 2 + 8} width={5} height={NODE_H - 16} rx={2.5} />
-      <text className="gnode__title" x={-NODE_W / 2 + 18} y={-3}>{truncate(task.title, 21)}</text>
-      <text className="gnode__sub" x={-NODE_W / 2 + 18} y={16}>
+      <rect className="gnode__box" x={-NODE_W / 2} y={-NODE_H / 2} width={NODE_W} height={NODE_H} rx={8} />
+      <rect className="gnode__accent" x={-NODE_W / 2} y={-NODE_H / 2} width={4} height={NODE_H} rx={2} />
+      <text className="gnode__title" x={-NODE_W / 2 + 16} y={-6}>{truncate(task.title, 22)}</text>
+      <text className="gnode__sub" x={-NODE_W / 2 + 16} y={16}>
         {task.durationHours}h · {task.isBlocked ? 'Blocked' : STATUS_LABEL[task.status]}
       </text>
     </g>

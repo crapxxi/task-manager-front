@@ -1,15 +1,31 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { Icon } from '../icons';
-import { useTasks, useToast, useUI } from '../state';
-import type { Task, TaskRequest } from '../types';
+import { useProjects, useTasks, useToast, useUI } from '../state';
+import { COMPLEXITY_LABEL, COMPLEXITY_ORDER, type Complexity, type Project, type Task } from '../types';
 
 export function ModalHost() {
-  const { form, confirmRequest } = useUI();
+  const { form, projectForm, confirmRequest } = useUI();
   return (
     <>
       {form && <TaskFormModal task={form.task} />}
+      {projectForm && <ProjectFormModal project={projectForm.project} />}
       {confirmRequest && <ConfirmDialog />}
     </>
+  );
+}
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  return (
+    <div className="modal-root">
+      <div className="modal-backdrop" onClick={onClose} />
+      <div className="modal" role="dialog" aria-modal="true">
+        <div className="modal__head">
+          <h2 className="modal__title">{title}</h2>
+          <button className="iconbtn" title="Close" onClick={onClose}><Icon name="x" /></button>
+        </div>
+        <div className="modal__body">{children}</div>
+      </div>
+    </div>
   );
 }
 
@@ -22,6 +38,7 @@ function TaskFormModal({ task }: { task: Task | null }) {
   const [title, setTitle] = useState(task?.title ?? '');
   const [description, setDescription] = useState(task?.description ?? '');
   const [duration, setDuration] = useState(task ? String(task.durationHours) : '');
+  const [complexity, setComplexity] = useState<Complexity>(task?.complexity ?? 'MEDIUM');
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -36,7 +53,7 @@ function TaskFormModal({ task }: { task: Task | null }) {
     if (!Number.isFinite(d) || !Number.isInteger(d) || d < 1 || d > 100) errors.push('Duration must be a whole number between 1 and 100 hours.');
     if (errors.length) { setErr(errors.join(' ')); return; }
 
-    const body: TaskRequest = { title: t, description: description.trim() || null, durationHours: d };
+    const body = { title: t, description: description.trim() || null, durationHours: d, complexity };
     setSaving(true);
     setErr(null);
     try {
@@ -51,61 +68,136 @@ function TaskFormModal({ task }: { task: Task | null }) {
   }
 
   return (
-    <div className="modal-root">
-      <div className="modal-backdrop" onClick={closeForm} />
-      <div className="modal" role="dialog" aria-modal="true">
-        <div className="modal__head">
-          <h2 className="modal__title">{editing ? 'Edit task' : 'New task'}</h2>
-          <button className="iconbtn" title="Close" onClick={closeForm}><Icon name="x" /></button>
-        </div>
-        <div className="modal__body">
-          <form className="form" onSubmit={submit}>
-            <label className="field">
-              <span className="field__label">Title<span className="field__req">required</span></span>
-              <input
-                className="input"
-                autoFocus
-                maxLength={255}
-                placeholder="e.g. Design the database schema"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span className="field__label">Description</span>
-              <textarea
-                className="input textarea"
-                maxLength={10000}
-                rows={4}
-                placeholder="Notes, acceptance criteria, links…"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span className="field__label">Estimated effort (hours)<span className="field__req">required</span></span>
-              <input
-                className="input"
-                type="number"
-                min={1}
-                max={100}
-                step={1}
-                placeholder="1–100"
-                value={duration}
-                onChange={(e) => setDuration(e.target.value)}
-              />
-            </label>
-            {err && <div className="form__err">{err}</div>}
-            <div className="form__actions">
-              <button type="button" className="btn btn--ghost" onClick={closeForm}>Cancel</button>
-              <button type="submit" className="btn btn--accent" disabled={saving}>
-                {editing ? 'Save changes' : 'Create task'}
+    <Modal title={editing ? 'Edit task' : 'New task'} onClose={closeForm}>
+      <form className="form" onSubmit={submit}>
+        <label className="field">
+          <span className="field__label">Title<span className="field__req">required</span></span>
+          <input
+            className="input"
+            autoFocus
+            maxLength={255}
+            placeholder="e.g. Design the database schema"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span className="field__label">Description</span>
+          <textarea
+            className="input textarea"
+            maxLength={10000}
+            rows={4}
+            placeholder="Notes, acceptance criteria, links…"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span className="field__label">Estimated effort (hours)<span className="field__req">required</span></span>
+          <input
+            className="input"
+            type="number"
+            min={1}
+            max={100}
+            step={1}
+            placeholder="1–100"
+            value={duration}
+            onChange={(e) => setDuration(e.target.value)}
+          />
+        </label>
+        <div className="field">
+          <span className="field__label">Complexity<span className="field__req">required</span></span>
+          <div className="seg">
+            {COMPLEXITY_ORDER.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className={`seg__btn ${complexity === c ? 'is-active' : ''}`}
+                onClick={() => setComplexity(c)}
+              >
+                {COMPLEXITY_LABEL[c]}
               </button>
-            </div>
-          </form>
+            ))}
+          </div>
         </div>
-      </div>
-    </div>
+        {err && <div className="form__err">{err}</div>}
+        <div className="form__actions">
+          <button type="button" className="btn btn--ghost" onClick={closeForm}>Cancel</button>
+          <button type="submit" className="btn btn--primary" disabled={saving}>
+            {editing ? 'Save changes' : 'Create task'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ProjectFormModal({ project }: { project: Project | null }) {
+  const editing = !!project;
+  const { create, update } = useProjects();
+  const { closeProjectForm } = useUI();
+  const { push } = useToast();
+
+  const [title, setTitle] = useState(project?.title ?? '');
+  const [description, setDescription] = useState(project?.description ?? '');
+  const [err, setErr] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const t = title.trim();
+    if (!t) { setErr('Title is required.'); return; }
+    if (t.length > 255) { setErr('Title must be 255 characters or fewer.'); return; }
+    if (description.length > 1000) { setErr('Description is too long.'); return; }
+
+    setSaving(true);
+    setErr(null);
+    try {
+      const body = { title: t, description: description.trim() || null };
+      if (editing && project) await update(project.id, body);
+      else await create(body);
+      push(editing ? 'Project updated' : 'Project created', 'success');
+      closeProjectForm();
+    } catch (e2) {
+      setErr((e2 as Error).message);
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal title={editing ? 'Edit project' : 'New project'} onClose={closeProjectForm}>
+      <form className="form" onSubmit={submit}>
+        <label className="field">
+          <span className="field__label">Title<span className="field__req">required</span></span>
+          <input
+            className="input"
+            autoFocus
+            maxLength={255}
+            placeholder="e.g. Website redesign"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span className="field__label">Description</span>
+          <textarea
+            className="input textarea"
+            maxLength={1000}
+            rows={3}
+            placeholder="What is this project about?"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </label>
+        {err && <div className="form__err">{err}</div>}
+        <div className="form__actions">
+          <button type="button" className="btn btn--ghost" onClick={closeProjectForm}>Cancel</button>
+          <button type="submit" className="btn btn--primary" disabled={saving}>
+            {editing ? 'Save changes' : 'Create project'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -114,21 +206,12 @@ function ConfirmDialog() {
   if (!confirmRequest) return null;
   const { opts } = confirmRequest;
   return (
-    <div className="modal-root">
-      <div className="modal-backdrop" onClick={() => resolveConfirm(false)} />
-      <div className="modal" role="dialog" aria-modal="true">
-        <div className="modal__head">
-          <h2 className="modal__title">{opts.title}</h2>
-          <button className="iconbtn" title="Close" onClick={() => resolveConfirm(false)}><Icon name="x" /></button>
-        </div>
-        <div className="modal__body">
-          <p className="drawer__desc" style={{ marginBottom: 18 }}>{opts.message}</p>
-          <div className="form__actions">
-            <button className="btn btn--ghost" onClick={() => resolveConfirm(false)}>Cancel</button>
-            <button className="btn btn--danger" onClick={() => resolveConfirm(true)}>{opts.confirmLabel ?? 'Confirm'}</button>
-          </div>
-        </div>
+    <Modal title={opts.title} onClose={() => resolveConfirm(false)}>
+      <p className="confirm__msg">{opts.message}</p>
+      <div className="form__actions">
+        <button className="btn btn--ghost" onClick={() => resolveConfirm(false)}>Cancel</button>
+        <button className="btn btn--danger" onClick={() => resolveConfirm(true)}>{opts.confirmLabel ?? 'Confirm'}</button>
       </div>
-    </div>
+    </Modal>
   );
 }

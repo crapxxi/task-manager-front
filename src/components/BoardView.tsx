@@ -1,6 +1,6 @@
 import { Icon } from '../icons';
 import { useTasks, useUI } from '../state';
-import { STATUS_ORDER, type Task, type TaskStatus } from '../types';
+import { COMPLEXITY_LABEL, STATUS_ORDER, type Task, type TaskStatus } from '../types';
 import { AdvanceButton, ConnectionError, EmptyState, LoadingState, StatusBadge } from './ui';
 
 const COLUMN_LABEL: Record<TaskStatus, string> = {
@@ -77,6 +77,7 @@ function TaskCard({ task }: { task: Task }) {
       {task.description && <p className="card__desc">{task.description}</p>}
       <div className="card__meta">
         <span className="meta" title="Estimated effort"><Icon name="clock" />{task.durationHours}h</span>
+        <span className={`meta meta--cx-${task.complexity.toLowerCase()}`} title="Complexity">{COMPLEXITY_LABEL[task.complexity]}</span>
         {pre > 0 && <span className="meta" title="Prerequisites"><Icon name="link" />{pre}</span>}
         {dep > 0 && <span className="meta" title="Unlocks"><Icon name="unlocks" />{dep}</span>}
       </div>

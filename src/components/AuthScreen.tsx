@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { BrandGlyph, Icon } from '../icons';
+import { Icon } from '../icons';
 import { useAuth, useTheme } from '../state';
 import { AUTH_LIMITS } from '../types';
 
@@ -68,20 +68,15 @@ export function AuthScreen() {
       </button>
 
       <div className="auth__card">
-        <div className="auth__brand">
-          <span className="auth__mark"><BrandGlyph size={26} /></span>
-          <div>
-            <h1 className="auth__title">Taskflow</h1>
-            <p className="auth__sub">dependency-aware task manager</p>
-          </div>
-        </div>
+        <h1 className="auth__title">Task Manager</h1>
+        <p className="auth__sub">Plan tasks and their dependencies</p>
 
-        <div className="switch auth__switch" role="tablist">
+        <div className="tabs auth__switch" role="tablist">
           <button
             type="button"
             role="tab"
             aria-selected={isLogin}
-            className={`switch__btn ${isLogin ? 'is-active' : ''}`}
+            className={`tabs__btn ${isLogin ? 'is-active' : ''}`}
             onClick={() => switchMode('login')}
           >
             Sign in
@@ -90,7 +85,7 @@ export function AuthScreen() {
             type="button"
             role="tab"
             aria-selected={!isLogin}
-            className={`switch__btn ${!isLogin ? 'is-active' : ''}`}
+            className={`tabs__btn ${!isLogin ? 'is-active' : ''}`}
             onClick={() => switchMode('register')}
           >
             Create account
@@ -138,7 +133,7 @@ export function AuthScreen() {
               </div>
               <div className="field">
                 <label className="field__label" htmlFor="auth-surname">
-                  Surname <span className="drawer__sublabel">optional</span>
+                  Surname <span className="field__opt">optional</span>
                 </label>
                 <input
                   id="auth-surname"
@@ -167,7 +162,7 @@ export function AuthScreen() {
             />
           </div>
 
-          <button type="submit" className="btn btn--accent" disabled={busy}>
+          <button type="submit" className="btn btn--primary btn--block" disabled={busy}>
             {busy ? (
               <>
                 <span className="spinner spinner--sm" />

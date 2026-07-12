@@ -1,72 +1,67 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { BrandGlyph, Icon } from '../icons';
-import { useAuth, useTasks, useUI } from '../state';
-
-function greetingFor(hour: number): string {
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
-}
-
-function useClock() {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    let timer: number;
-    // Re-render right at the next minute boundary so HH:MM is never stale.
-    const schedule = () => {
-      timer = window.setTimeout(() => {
-        setNow(new Date());
-        schedule();
-      }, 60_000 - (Date.now() % 60_000) + 50);
-    };
-    schedule();
-    return () => window.clearTimeout(timer);
-  }, []);
-  return now;
-}
+import { Icon } from '../icons';
+import { useProjects, useTasks, useUI } from '../state';
 
 export function TopBar() {
-  const { openCreate } = useUI();
-  const { username, name } = useAuth();
-  const { tasks, status } = useTasks();
-  const now = useClock();
+  const { current, remove } = useProjects();
+  const { reload } = useTasks();
+  const { view, setView, openCreate, openEditProject, confirm, clearSelection } = useUI();
 
-  const total = tasks.length;
-  const done = tasks.filter((t) => t.status === 'COMPLETED').length;
-  const blocked = tasks.filter((t) => t.isBlocked).length;
+  if (!current) return null;
 
-  const weekday = now.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
-  const day = now.toLocaleDateString('en-US', { day: '2-digit' });
-  const month = now.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
-  const date = `${weekday} · ${day} ${month}`;
-  // 24-hour clock (e.g. 19:42) to match the design.
-  const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-
-  let sub: ReactNode;
-  if (status !== 'ready') sub = <>Loading your dependency map…</>;
-  else if (total === 0) sub = <>No tasks yet — create your first to map it out.</>;
-  else sub = (
-    <>
-      You've completed <b>{done}</b> of {total}
-      {blocked > 0 && <> · {blocked} blocked</>}.
-    </>
-  );
+  async function onDeleteProject() {
+    if (!current) return;
+    const ok = await confirm({
+      title: 'Delete project',
+      message: `Delete “${current.title}” with all of its tasks? This can’t be undone.`,
+      confirmLabel: 'Delete',
+    });
+    if (!ok) return;
+    clearSelection();
+    await remove(current.id);
+  }
 
   return (
     <header className="topbar">
-      <div className="topbar__lead">
-        <div className="topbar__brandm" title="Foundry"><BrandGlyph size={18} /></div>
-        <div style={{ minWidth: 0 }}>
-          <div className="topbar__greeting">{greetingFor(now.getHours())}{(name || username) ? `, ${name || username}` : ''}</div>
-          <div className="topbar__sub">{sub}</div>
-        </div>
+      <div className="topbar__info">
+        <h1 className="topbar__title">{current.title}</h1>
+        {current.description && <p className="topbar__desc">{current.description}</p>}
       </div>
 
-      <div className="topbar__right">
-        <div className="clock">{date}<br /><b>{time}</b></div>
-        <div className="topbar__div" />
-        <button className="btn btn--wire" title="New task" onClick={openCreate}>
-          <Icon name="plus" /><span className="btn__label">New task</span>
+      <div className="topbar__actions">
+        <div className="tabs" role="tablist" aria-label="Views">
+          <button
+            role="tab"
+            aria-selected={view === 'board'}
+            className={`tabs__btn ${view === 'board' ? 'is-active' : ''}`}
+            onClick={() => setView('board')}
+          >
+            Board
+          </button>
+          <button
+            role="tab"
+            aria-selected={view === 'graph'}
+            className={`tabs__btn ${view === 'graph' ? 'is-active' : ''}`}
+            onClick={() => setView('graph')}
+          >
+            Graph
+          </button>
+          <button
+            role="tab"
+            aria-selected={view === 'plan'}
+            className={`tabs__btn ${view === 'plan' ? 'is-active' : ''}`}
+            onClick={() => setView('plan')}
+          >
+            Plan
+          </button>
+        </div>
+
+        <button className="iconbtn" title="Refresh" onClick={() => void reload()}><Icon name="refresh" /></button>
+        <button className="iconbtn" title="Edit project" onClick={() => openEditProject(current)}><Icon name="edit" /></button>
+        <button className="iconbtn iconbtn--danger" title="Delete project" onClick={() => void onDeleteProject()}><Icon name="trash" /></button>
+
+        <button className="btn btn--primary" onClick={openCreate}>
+          <Icon name="plus" />
+          New task
         </button>
       </div>
     </header>

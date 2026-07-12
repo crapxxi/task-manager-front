@@ -13,22 +13,12 @@ export function StatsBar() {
 
   return (
     <div className="stats">
-      <Stat kind="total" label="Total" n={tasks.length} />
-      <Stat kind="todo" label="To do" n={by('TODO')} />
-      <Stat kind="progress" label="In progress" n={by('IN_PROGRESS')} />
-      <Stat kind="done" label="Completed" n={by('COMPLETED')} />
-      {blocked > 0 && (
-        <span className="stat stat--blocked">
-          <Icon name="lock" />
-          <b>{blocked}</b>
-          blocked
-        </span>
-      )}
-      <span className="stat stat--hours" title="Total estimated effort">
-        <Icon name="clock" />
-        <b>{hours}</b>
-        h total
-      </span>
+      <span className="stat">{tasks.length} tasks</span>
+      <span className="stat stat--todo">{by('TODO')} to do</span>
+      <span className="stat stat--progress">{by('IN_PROGRESS')} in progress</span>
+      <span className="stat stat--done">{by('COMPLETED')} completed</span>
+      {blocked > 0 && <span className="stat stat--blocked">{blocked} blocked</span>}
+      <span className="stat stat--hours">{hours}h total</span>
       <div className="stats__spacer" />
       {view === 'board' && (
         <div className="search">
@@ -43,15 +33,5 @@ export function StatsBar() {
         </div>
       )}
     </div>
-  );
-}
-
-function Stat({ kind, label, n }: { kind: string; label: string; n: number }) {
-  return (
-    <span className={`stat stat--${kind}`}>
-      <span className="stat__dot" />
-      <b>{n}</b>
-      {label}
-    </span>
   );
 }

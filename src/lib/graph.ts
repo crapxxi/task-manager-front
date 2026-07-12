@@ -1,9 +1,9 @@
 import type { GraphEdge, Task } from '../types';
 
-export const NODE_W = 196;
-export const NODE_H = 68;
-const HGAP = 46;
-const VGAP = 84;
+export const NODE_W = 200;
+export const NODE_H = 76;
+const HGAP = 48;
+const VGAP = 72;
 
 export interface XY {
   x: number;
@@ -87,12 +87,26 @@ export function computeLayout(tasks: Task[], edges: GraphEdge[]): Map<number, XY
   return positions;
 }
 
-/** Smooth vertical bezier from the bottom of `a` to the top of `b`. */
+/**
+ * Smooth bezier between two nodes, attached to whichever sides face each
+ * other: bottom→top for mostly-vertical links, side→side for mostly-
+ * horizontal ones. The arrowhead auto-orients along the path.
+ */
 export function edgePath(a: XY, b: XY): string {
-  const x1 = a.x;
-  const y1 = a.y + NODE_H / 2;
-  const x2 = b.x;
-  const y2 = b.y - NODE_H / 2;
-  const dy = Math.max(28, (y2 - y1) / 2);
-  return `M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+
+  if (Math.abs(dx) > Math.abs(dy)) {
+    const s = dx >= 0 ? 1 : -1;
+    const x1 = a.x + s * (NODE_W / 2);
+    const x2 = b.x - s * (NODE_W / 2);
+    const bend = s * Math.max(28, Math.abs(x2 - x1) / 2);
+    return `M ${x1} ${a.y} C ${x1 + bend} ${a.y}, ${x2 - bend} ${b.y}, ${x2} ${b.y}`;
+  }
+
+  const s = dy >= 0 ? 1 : -1;
+  const y1 = a.y + s * (NODE_H / 2);
+  const y2 = b.y - s * (NODE_H / 2);
+  const bend = s * Math.max(28, Math.abs(y2 - y1) / 2);
+  return `M ${a.x} ${y1} C ${a.x} ${y1 + bend}, ${b.x} ${y2 - bend}, ${b.x} ${y2}`;
 }

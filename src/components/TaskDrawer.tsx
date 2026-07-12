@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from '../icons';
 import { api } from '../api';
 import { useTasks, useUI } from '../state';
-import type { DependencyType, Task } from '../types';
+import { COMPLEXITY_LABEL, type DependencyType, type Task } from '../types';
 import { AdvanceButton, StatusBadge, StatusDot } from './ui';
 
 export function TaskDrawer() {
@@ -60,6 +60,7 @@ function DrawerBody({ task }: { task: Task }) {
         <StatusBadge status={task.status} />
         {task.isBlocked && <span className="chip chip--blocked"><Icon name="lock" />Blocked</span>}
         <span className="chip"><Icon name="clock" />{task.durationHours}h</span>
+        <span className={`chip chip--cx-${task.complexity.toLowerCase()}`}>{COMPLEXITY_LABEL[task.complexity]}</span>
         <span className="chip chip--muted">#{task.id}</span>
       </div>
 
