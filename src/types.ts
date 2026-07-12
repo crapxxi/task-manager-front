@@ -1,4 +1,4 @@
-export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'COMPLETED';
+export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'COMPLETED' | 'EXPIRED';
 export type DependencyType = 'STRICT_PREREQUISITE' | 'OPTIONAL_LINK';
 export type Complexity = 'EASY' | 'MEDIUM' | 'HARD';
 
@@ -9,6 +9,9 @@ export const COMPLEXITY_LABEL: Record<Complexity, string> = {
 };
 
 export const COMPLEXITY_ORDER: Complexity[] = ['EASY', 'MEDIUM', 'HARD'];
+
+/** Importance is 0–5 on the backend (0 = not important, 5 = critical). */
+export const IMPORTANCE_LABEL = ['Not important', 'Someday', 'Low', 'Normal', 'High', 'Critical'] as const;
 
 /* ============================================================
    Projects — every task lives inside a project
@@ -41,6 +44,7 @@ export interface TaskResponse {
   isBlocked: boolean;
   projectId: number;
   complexity: Complexity;
+  importance: number;
 }
 
 /** GET /api/v1/suggest/tasks/{projectId}/time → task + its earliest possible finish hour. */
@@ -48,13 +52,14 @@ export interface TaskWithTime extends TaskResponse {
   calculatedFinishHour: number;
 }
 
-/** Body for POST/PUT /api/v1/tasks — projectId and complexity are required by the backend. */
+/** Body for POST/PUT /api/v1/tasks — projectId, complexity and importance (0–5) are required by the backend. */
 export interface TaskRequest {
   projectId: number;
   title: string;
   description: string | null;
   durationHours: number;
   complexity: Complexity;
+  importance: number;
 }
 
 /** GET /api/graph/tasks/all/{projectId} → nodes. */
@@ -96,14 +101,17 @@ export interface Task {
   status: TaskStatus;
   isBlocked: boolean;
   complexity: Complexity;
+  importance: number;
 }
 
 export const STATUS_LABEL: Record<TaskStatus, string> = {
   TODO: 'To do',
   IN_PROGRESS: 'In progress',
   COMPLETED: 'Completed',
+  EXPIRED: 'Expired',
 };
 
+/** Board columns. EXPIRED gets its own column only when such tasks exist. */
 export const STATUS_ORDER: TaskStatus[] = ['TODO', 'IN_PROGRESS', 'COMPLETED'];
 
 /* ============================================================

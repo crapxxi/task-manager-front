@@ -10,13 +10,20 @@ export function StatsBar() {
   const by = (s: TaskStatus) => tasks.filter((t) => t.status === s).length;
   const blocked = tasks.filter((t) => t.isBlocked).length;
   const hours = tasks.reduce((sum, t) => sum + t.durationHours, 0);
+  const done = by('COMPLETED');
+  const pct = Math.round((done / tasks.length) * 100);
 
   return (
     <div className="stats">
+      <span className="stat stat--pct" title={`${done} of ${tasks.length} tasks completed`}>
+        <span className="progress"><span className="progress__fill" style={{ width: `${pct}%` }} /></span>
+        {pct}% done
+      </span>
       <span className="stat">{tasks.length} tasks</span>
       <span className="stat stat--todo">{by('TODO')} to do</span>
       <span className="stat stat--progress">{by('IN_PROGRESS')} in progress</span>
-      <span className="stat stat--done">{by('COMPLETED')} completed</span>
+      <span className="stat stat--done">{done} completed</span>
+      {by('EXPIRED') > 0 && <span className="stat stat--expired">{by('EXPIRED')} expired</span>}
       {blocked > 0 && <span className="stat stat--blocked">{blocked} blocked</span>}
       <span className="stat stat--hours">{hours}h total</span>
       <div className="stats__spacer" />

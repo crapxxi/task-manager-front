@@ -10,10 +10,14 @@ import {
 import { Icon } from '../icons';
 import { useAuth, useProjects, useTasks, useUI } from '../state';
 import { computeLayout, edgePath, NODE_H, NODE_W, type XY } from '../lib/graph';
-import { STATUS_LABEL, type Task } from '../types';
+import { IMPORTANCE_LABEL, STATUS_LABEL, type Task } from '../types';
 import { ConnectionError, EmptyState, LoadingState } from './ui';
 
 interface Transform { tx: number; ty: number; k: number }
+
+/** In "Recent" mode only this many newest tasks are drawn — big graphs stay readable. */
+const RECENT_LIMIT = 12;
+type GraphMode = 'recent' | 'all';
 
 type Drag =
   | { type: 'pan'; sx: number; sy: number; otx: number; oty: number; moved: boolean }
@@ -46,8 +50,25 @@ export function GraphView() {
   const posKey = `tm.graph.pos.${username ?? 'anon'}.${currentId ?? 0}`;
   const svgRef = useRef<SVGSVGElement>(null);
 
-  const sig = useMemo(() => tasks.map((t) => t.id).sort((a, b) => a - b).join(','), [tasks]);
+  const [mode, setMode] = useState<GraphMode>(() =>
+    localStorage.getItem('tm.graph.mode') === 'all' ? 'all' : 'recent');
+  const pickMode = (m: GraphMode) => { setMode(m); localStorage.setItem('tm.graph.mode', m); };
+
+  // "Recent" trims the graph to the newest tasks (ids grow with creation order).
+  const windowed = mode === 'recent' && tasks.length > RECENT_LIMIT;
+  const visibleTasks = useMemo(
+    () => (windowed ? [...tasks].sort((a, b) => b.id - a.id).slice(0, RECENT_LIMIT) : tasks),
+    [tasks, windowed],
+  );
+  const hiddenCount = tasks.length - visibleTasks.length;
+
+  const sig = useMemo(() => visibleTasks.map((t) => t.id).sort((a, b) => a - b).join(','), [visibleTasks]);
   const [positions, setPositions] = useState<Map<number, XY>>(() => new Map());
+  // Which storage key the current `positions` belong to. On a project switch
+  // posKey changes immediately while positions/tasks still hold the previous
+  // project's data until the reload lands — without this guard the debounced
+  // persist below would overwrite (and prune) the new project's saved layout.
+  const posOwner = useRef('');
   const [tf, setTf] = useState<Transform>({ tx: 0, ty: 0, k: 1 });
   const [panning, setPanning] = useState(false);
   const [hoverId, setHoverId] = useState<number | null>(null);
@@ -63,19 +84,28 @@ export function GraphView() {
   useEffect(() => {
     if (sig !== laidSig.current) {
       laidSig.current = sig;
-      const layout = computeLayout(tasks, edges);
+      const layout = computeLayout(visibleTasks, edges);
       for (const [id, p] of readPositions(posKey)) if (layout.has(id)) layout.set(id, p);
       setPositions(layout);
+      posOwner.current = posKey;
       needFit.current = true;
     }
-  }, [sig, tasks, edges, posKey]);
+  }, [sig, visibleTasks, edges, posKey]);
 
   // Persist the arrangement (debounced — drags update positions every frame).
+  // Merged over what's already saved, so positions of tasks hidden by the
+  // "Recent" window survive; entries for deleted tasks get pruned.
   useEffect(() => {
-    if (!positions.size) return;
-    const t = window.setTimeout(() => writePositions(posKey, positions), 400);
+    if (!positions.size || posOwner.current !== posKey) return;
+    const t = window.setTimeout(() => {
+      const merged = readPositions(posKey);
+      for (const [id, p] of positions) merged.set(id, p);
+      const alive = new Set(tasks.map((t2) => t2.id));
+      for (const id of [...merged.keys()]) if (!alive.has(id)) merged.delete(id);
+      writePositions(posKey, merged);
+    }, 400);
     return () => window.clearTimeout(t);
-  }, [positions, posKey]);
+  }, [positions, posKey, tasks]);
 
   const fitToView = useCallback(() => {
     const svg = svgRef.current;
@@ -122,13 +152,6 @@ export function GraphView() {
     svg.addEventListener('wheel', onWheel, { passive: false });
     return () => svg.removeEventListener('wheel', onWheel);
   }, [zoom]);
-
-  const zoomButton = (factor: number) => {
-    const svg = svgRef.current;
-    if (!svg) return;
-    const r = svg.getBoundingClientRect();
-    zoom(r.width / 2, r.height / 2, factor);
-  };
 
   function onPointerDown(e: RPointerEvent<SVGSVGElement>) {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -217,8 +240,11 @@ export function GraphView() {
     try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
   }
 
-  // Hovering a node previews its connections; a click-selection holds them when not hovering.
-  const focusId = hoverId ?? selectedId;
+  // Hovering a node previews its connections; a click-selection holds them when
+  // not hovering. A selection hidden by the "Recent" window is ignored —
+  // otherwise it would dim the whole graph around a node that isn't drawn.
+  const visibleIds = useMemo(() => new Set(visibleTasks.map((t) => t.id)), [visibleTasks]);
+  const focusId = hoverId ?? (selectedId != null && visibleIds.has(selectedId) ? selectedId : null);
 
   const neighbors = useMemo(() => {
     const set = new Set<number>();
@@ -244,17 +270,41 @@ export function GraphView() {
           <LegendSwatch color="var(--progress)" label="In progress" />
           <LegendSwatch color="var(--done)" label="Completed" />
           <LegendSwatch color="var(--blocked)" label="Blocked" />
+          {tasks.some((t) => t.status === 'EXPIRED') && <LegendSwatch color="var(--expired)" label="Expired" />}
           <span className="legend__item"><span className="legend__line" />Required</span>
           <span className="legend__item"><span className="legend__line legend__line--dash" />Optional</span>
         </div>
         <div className="gbtns">
-          <button className="iconbtn" title="Zoom out" onClick={() => zoomButton(1 / 1.2)}><Icon name="zoomout" /></button>
-          <button className="iconbtn" title="Zoom in" onClick={() => zoomButton(1.2)}><Icon name="zoomin" /></button>
+          {tasks.length > RECENT_LIMIT && (
+            <>
+              {windowed && <span className="graph-hint">{hiddenCount} older hidden</span>}
+              <div className="seg seg--sm" role="tablist" aria-label="Graph scope">
+                <button
+                  role="tab"
+                  aria-selected={mode === 'recent'}
+                  className={`seg__btn ${mode === 'recent' ? 'is-active' : ''}`}
+                  title={`Only the ${RECENT_LIMIT} newest tasks`}
+                  onClick={() => pickMode('recent')}
+                >
+                  Recent
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={mode === 'all'}
+                  className={`seg__btn ${mode === 'all' ? 'is-active' : ''}`}
+                  title="The whole graph"
+                  onClick={() => pickMode('all')}
+                >
+                  All
+                </button>
+              </div>
+            </>
+          )}
           <button className="iconbtn" title="Fit to view" onClick={fitToView}><Icon name="fit" /></button>
           <button
             className="iconbtn"
             title="Re-arrange"
-            onClick={() => { setPositions(computeLayout(tasks, edges)); needFit.current = true; }}
+            onClick={() => { setPositions(computeLayout(visibleTasks, edges)); needFit.current = true; }}
           >
             <Icon name="refresh" />
           </button>
@@ -294,7 +344,7 @@ export function GraphView() {
               })}
             </g>
             <g className="nodes">
-              {tasks.map((t) => {
+              {visibleTasks.map((t) => {
                 const p = positions.get(t.id);
                 if (!p) return null;
                 const selected = focusId === t.id;
@@ -324,12 +374,14 @@ function GraphNode({ task, p, selected, dim, onHover }: {
       onPointerEnter={(e) => { if (e.pointerType === 'mouse') onHover(task.id); }}
       onPointerLeave={(e) => { if (e.pointerType === 'mouse') onHover(null); }}
     >
-      <title>{task.title}</title>
-      <rect className="gnode__box" x={-NODE_W / 2} y={-NODE_H / 2} width={NODE_W} height={NODE_H} rx={8} />
-      <rect className="gnode__accent" x={-NODE_W / 2} y={-NODE_H / 2} width={4} height={NODE_H} rx={2} />
-      <text className="gnode__title" x={-NODE_W / 2 + 16} y={-6}>{truncate(task.title, 22)}</text>
-      <text className="gnode__sub" x={-NODE_W / 2 + 16} y={16}>
-        {task.durationHours}h · {task.isBlocked ? 'Blocked' : STATUS_LABEL[task.status]}
+      <title>{`${task.title} — ${STATUS_LABEL[task.status]}`}</title>
+      <rect className="gnode__box" x={-NODE_W / 2} y={-NODE_H / 2} width={NODE_W} height={NODE_H} rx={12} />
+      <circle className="gnode__dot" cx={-NODE_W / 2 + 20} cy={-10} r={4} />
+      <text className="gnode__title" x={-NODE_W / 2 + 32} y={-6}>{truncate(task.title, 20)}</text>
+      <text className="gnode__sub" x={-NODE_W / 2 + 32} y={16}>
+        {task.durationHours}h ·{' '}
+        <tspan className={`gnode__imp--${task.importance}`}>{IMPORTANCE_LABEL[task.importance]}</tspan>
+        {task.isBlocked && <tspan> · Blocked</tspan>}
       </text>
     </g>
   );

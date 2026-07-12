@@ -1,7 +1,7 @@
 import type { GraphEdge, Task } from '../types';
 
-export const NODE_W = 200;
-export const NODE_H = 76;
+export const NODE_W = 210;
+export const NODE_H = 64;
 const HGAP = 48;
 const VGAP = 72;
 

@@ -1,12 +1,13 @@
 import { Icon } from '../icons';
 import { useTasks, useUI } from '../state';
 import { COMPLEXITY_LABEL, STATUS_ORDER, type Task, type TaskStatus } from '../types';
-import { AdvanceButton, ConnectionError, EmptyState, LoadingState, StatusBadge } from './ui';
+import { AdvanceButton, ConnectionError, EmptyState, ImportanceChip, LoadingState, StatusBadge } from './ui';
 
 const COLUMN_LABEL: Record<TaskStatus, string> = {
   TODO: 'To Do',
   IN_PROGRESS: 'In Progress',
   COMPLETED: 'Completed',
+  EXPIRED: 'Expired',
 };
 
 export function BoardView() {
@@ -22,13 +23,18 @@ export function BoardView() {
     (t) => !q || t.title.toLowerCase().includes(q) || t.description.toLowerCase().includes(q),
   );
 
+  // The Expired column only appears once something actually expires.
+  const columns: TaskStatus[] = tasks.some((t) => t.status === 'EXPIRED')
+    ? [...STATUS_ORDER, 'EXPIRED']
+    : STATUS_ORDER;
+
   return (
-    <section className="view board">
-      {STATUS_ORDER.map((col) => {
-        // Within a column, blocked tasks sink below the actionable ones.
+    <section className={`view board ${columns.length === 4 ? 'board--x4' : ''}`}>
+      {columns.map((col) => {
+        // Within a column, important tasks float up and blocked ones sink down.
         const items = filtered
           .filter((t) => t.status === col)
-          .sort((a, b) => Number(a.isBlocked) - Number(b.isBlocked));
+          .sort((a, b) => (Number(a.isBlocked) - Number(b.isBlocked)) || (b.importance - a.importance));
         return (
           <div key={col} className={`column column--${col.toLowerCase()}`}>
             <div className="column__head">
@@ -76,6 +82,7 @@ function TaskCard({ task }: { task: Task }) {
       <h3 className="card__title">{task.title}</h3>
       {task.description && <p className="card__desc">{task.description}</p>}
       <div className="card__meta">
+        <ImportanceChip value={task.importance} />
         <span className="meta" title="Estimated effort"><Icon name="clock" />{task.durationHours}h</span>
         <span className={`meta meta--cx-${task.complexity.toLowerCase()}`} title="Complexity">{COMPLEXITY_LABEL[task.complexity]}</span>
         {pre > 0 && <span className="meta" title="Prerequisites"><Icon name="link" />{pre}</span>}

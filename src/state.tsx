@@ -319,6 +319,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
         status: t.status,
         isBlocked: !!t.isBlocked,
         complexity: t.complexity ?? 'MEDIUM',
+        importance: t.importance ?? 0,
       })));
       setEdges(graph.edges);
       setStatus('ready');

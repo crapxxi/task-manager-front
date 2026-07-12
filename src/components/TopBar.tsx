@@ -1,9 +1,8 @@
 import { Icon } from '../icons';
-import { useProjects, useTasks, useUI } from '../state';
+import { useProjects, useUI } from '../state';
 
 export function TopBar() {
   const { current, remove } = useProjects();
-  const { reload } = useTasks();
   const { view, setView, openCreate, openEditProject, confirm, clearSelection } = useUI();
 
   if (!current) return null;
@@ -55,7 +54,6 @@ export function TopBar() {
           </button>
         </div>
 
-        <button className="iconbtn" title="Refresh" onClick={() => void reload()}><Icon name="refresh" /></button>
         <button className="iconbtn" title="Edit project" onClick={() => openEditProject(current)}><Icon name="edit" /></button>
         <button className="iconbtn iconbtn--danger" title="Delete project" onClick={() => void onDeleteProject()}><Icon name="trash" /></button>
 

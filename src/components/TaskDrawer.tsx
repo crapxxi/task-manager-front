@@ -3,7 +3,7 @@ import { Icon } from '../icons';
 import { api } from '../api';
 import { useTasks, useUI } from '../state';
 import { COMPLEXITY_LABEL, type DependencyType, type Task } from '../types';
-import { AdvanceButton, StatusBadge, StatusDot } from './ui';
+import { AdvanceButton, ImportanceChip, StatusBadge, StatusDot } from './ui';
 
 export function TaskDrawer() {
   const { selectedId, clearSelection } = useUI();
@@ -61,6 +61,7 @@ function DrawerBody({ task }: { task: Task }) {
         {task.isBlocked && <span className="chip chip--blocked"><Icon name="lock" />Blocked</span>}
         <span className="chip"><Icon name="clock" />{task.durationHours}h</span>
         <span className={`chip chip--cx-${task.complexity.toLowerCase()}`}>{COMPLEXITY_LABEL[task.complexity]}</span>
+        <ImportanceChip value={task.importance} />
         <span className="chip chip--muted">#{task.id}</span>
       </div>
 
@@ -200,7 +201,11 @@ function AddPrerequisite({ task }: { task: Task }) {
 
   const existing = new Set(prerequisitesOf(task.id).map((p) => p.id));
   const wouldCycle = descendants(task.id); // adding any of these as a parent makes a loop
-  const candidates = tasks.filter((c) => c.id !== task.id && !existing.has(c.id) && !wouldCycle.has(c.id));
+  // An expired task can never be completed, so requiring it would block this
+  // task forever; it can still be attached as a non-blocking optional link.
+  const candidates = tasks.filter((c) =>
+    c.id !== task.id && !existing.has(c.id) && !wouldCycle.has(c.id) &&
+    (type === 'OPTIONAL_LINK' || c.status !== 'EXPIRED'));
   const q = query.trim().toLowerCase();
   const shown = candidates.filter((c) => !q || c.title.toLowerCase().includes(q));
 

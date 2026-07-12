@@ -3,7 +3,7 @@ import { api } from '../api';
 import { Icon } from '../icons';
 import { useProjects, useTasks, useUI } from '../state';
 import { COMPLEXITY_LABEL, type TaskWithTime } from '../types';
-import { StatusDot } from './ui';
+import { ImportanceChip, StatusDot } from './ui';
 
 interface PlanRow extends TaskWithTime {
   /** 1-based position in the suggested execution order. */
@@ -118,6 +118,7 @@ export function PlanView() {
                 <StatusDot status={row.status} />
                 <span className="planrow__title">{row.title}</span>
                 {blocked && <span className="chip chip--blocked chip--xs">blocked</span>}
+                <ImportanceChip value={row.importance} />
                 <span className={`meta meta--cx-${row.complexity.toLowerCase()}`}>{COMPLEXITY_LABEL[row.complexity]}</span>
                 <span className="meta" title="Estimated effort"><Icon name="clock" />{row.durationHours}h</span>
                 <span className="planrow__finish" title="Earliest possible finish, counting prerequisite hours">

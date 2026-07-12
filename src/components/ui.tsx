@@ -1,9 +1,19 @@
 import { Icon } from '../icons';
-import { STATUS_LABEL, type Task, type TaskStatus } from '../types';
+import { IMPORTANCE_LABEL, STATUS_LABEL, type Task, type TaskStatus } from '../types';
 import { useProjects, useTasks, useUI } from '../state';
 
 export function StatusDot({ status }: { status: TaskStatus }) {
   return <span className={`status-dot d-${status.toLowerCase()}`} />;
+}
+
+/** Priority label ("High", "Critical"…); 0 reads as a quiet "Not important". */
+export function ImportanceChip({ value }: { value: number }) {
+  return (
+    <span className={`chip chip--imp-${value}`} title="Importance">
+      {value > 0 && <Icon name="flag" />}
+      {IMPORTANCE_LABEL[value] ?? IMPORTANCE_LABEL[0]}
+    </span>
+  );
 }
 
 export function StatusBadge({ status }: { status: TaskStatus }) {
@@ -25,6 +35,15 @@ export function AdvanceButton({ task, small }: { task: Task; small?: boolean }) 
       <span className="done-pill">
         <Icon name="check" />
         Completed
+      </span>
+    );
+  }
+  // The backend rejects status changes for expired tasks.
+  if (task.status === 'EXPIRED') {
+    return (
+      <span className="done-pill done-pill--expired">
+        <Icon name="clock" />
+        Expired
       </span>
     );
   }

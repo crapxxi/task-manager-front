@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Icon } from '../icons';
 import { useProjects, useTasks, useToast, useUI } from '../state';
-import { COMPLEXITY_LABEL, COMPLEXITY_ORDER, type Complexity, type Project, type Task } from '../types';
+import { COMPLEXITY_LABEL, COMPLEXITY_ORDER, IMPORTANCE_LABEL, type Complexity, type Project, type Task } from '../types';
 
 export function ModalHost() {
   const { form, projectForm, confirmRequest } = useUI();
@@ -39,6 +39,7 @@ function TaskFormModal({ task }: { task: Task | null }) {
   const [description, setDescription] = useState(task?.description ?? '');
   const [duration, setDuration] = useState(task ? String(task.durationHours) : '');
   const [complexity, setComplexity] = useState<Complexity>(task?.complexity ?? 'MEDIUM');
+  const [importance, setImportance] = useState(task?.importance ?? 0);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -53,7 +54,7 @@ function TaskFormModal({ task }: { task: Task | null }) {
     if (!Number.isFinite(d) || !Number.isInteger(d) || d < 1 || d > 100) errors.push('Duration must be a whole number between 1 and 100 hours.');
     if (errors.length) { setErr(errors.join(' ')); return; }
 
-    const body = { title: t, description: description.trim() || null, durationHours: d, complexity };
+    const body = { title: t, description: description.trim() || null, durationHours: d, complexity, importance };
     setSaving(true);
     setErr(null);
     try {
@@ -116,6 +117,21 @@ function TaskFormModal({ task }: { task: Task | null }) {
                 onClick={() => setComplexity(c)}
               >
                 {COMPLEXITY_LABEL[c]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="field">
+          <span className="field__label">Importance<span className="field__opt">helps pick what to do first</span></span>
+          <div className="prio" role="radiogroup" aria-label="Importance">
+            {IMPORTANCE_LABEL.map((label, v) => (
+              <button
+                key={label}
+                type="button"
+                className={`prio__btn prio__btn--${v} ${importance === v ? 'is-active' : ''}`}
+                onClick={() => setImportance(v)}
+              >
+                {label}
               </button>
             ))}
           </div>
