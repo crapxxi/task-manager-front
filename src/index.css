@@ -178,6 +178,9 @@ h1, h2, h3, p { margin: 0; }
   color: var(--text-faint);
 }
 
+/* Mobile-only project switcher; the vertical list replaces it on desktop. */
+.projects__select { display: none; }
+
 .sidebar__foot {
   display: flex;
   align-items: center;
@@ -1101,10 +1104,24 @@ h1, h2, h3, p { margin: 0; }
     border-bottom: 1px solid var(--border);
   }
   .sidebar__brand { border-bottom: none; padding: 12px; white-space: nowrap; }
-  .sidebar__section { flex-direction: row; align-items: center; padding: 8px; overflow-x: auto; }
+  .sidebar__section { flex-direction: row; align-items: center; padding: 8px; min-width: 0; }
   .sidebar__heading { display: none; }
-  .projects { flex-direction: row; overflow-x: auto; overflow-y: hidden; }
-  .projects__item { white-space: nowrap; }
+  .projects { display: none; }
+  .projects__select {
+    display: block;
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    outline: none;
+  }
+  .projects__select:focus { border-color: var(--primary); }
+  .sidebar__newlabel { display: none; }
+  .sidebar__section .btn--block { width: auto; flex-shrink: 0; }
   .sidebar__foot { border-top: none; padding: 8px; }
   .sidebar__user { display: none; }
   .main { padding: 0 12px; }

@@ -31,9 +31,21 @@ export function Sidebar() {
             </button>
           ))}
         </nav>
+        {projects.length > 0 && (
+          <select
+            className="projects__select"
+            aria-label="Switch project"
+            value={currentId ?? ''}
+            onChange={(e) => { clearSelection(); selectProject(Number(e.target.value)); }}
+          >
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>{p.title}</option>
+            ))}
+          </select>
+        )}
         <button className="btn btn--ghost btn--block" onClick={openCreateProject}>
           <Icon name="plus" />
-          New project
+          <span className="sidebar__newlabel">New project</span>
         </button>
       </div>
 
