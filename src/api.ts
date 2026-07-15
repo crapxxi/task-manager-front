@@ -102,8 +102,8 @@ export const api = {
   updateTask: (id: number, body: TaskRequest) => req<TaskResponse>('PUT', `/api/v1/tasks/${id}`, { body }),
   deleteTask: (id: number) => req<void>('DELETE', `/api/v1/tasks/${id}`),
   bind: (taskId: number, parentId: number, type?: DependencyType) =>
-    req<TaskResponse[]>('PATCH', '/api/v1/tasks/bind', { query: { taskId, parentId, ...(type ? { type } : {}) } }),
-  unbind: (taskId: number, parentId: number) => req<TaskResponse[]>('PATCH', '/api/v1/tasks/unbind', { query: { taskId, parentId } }),
+    req<TaskResponse[]>('PATCH', `/api/v1/tasks/${taskId}/bind/${parentId}`, type ? { query: { type } } : {}),
+  unbind: (taskId: number, parentId: number) => req<TaskResponse[]>('PATCH', `/api/v1/tasks/${taskId}/unbind/${parentId}`),
   toggleStatus: (id: number) => req<TaskResponse>('PATCH', `/api/v1/tasks/${id}/toggle-status`),
 
   // dependency graph

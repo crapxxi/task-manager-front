@@ -45,11 +45,16 @@ export interface TaskResponse {
   projectId: number;
   complexity: Complexity;
   importance: number;
+  /** Earliest possible finish hour on the critical path; only /suggest/tasks/{id}/time fills it. */
+  calculatedTime: number | null;
+  createdAt: string;
+  updatedAt: string | null;
+  completedAt: string | null;
 }
 
-/** GET /api/v1/suggest/tasks/{projectId}/time → task + its earliest possible finish hour. */
+/** GET /api/v1/suggest/tasks/{projectId}/time → TaskResponse with calculatedTime populated. */
 export interface TaskWithTime extends TaskResponse {
-  calculatedFinishHour: number;
+  calculatedTime: number;
 }
 
 /** Body for POST/PUT /api/v1/tasks — projectId, complexity and importance (0–5) are required by the backend. */

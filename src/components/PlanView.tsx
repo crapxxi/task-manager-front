@@ -43,13 +43,13 @@ export function PlanView() {
         api.getSuggested(currentId),
         api.getTasksWithTime(currentId),
       ]);
-      const hourById = new Map(withTime.map((t) => [t.id, t.calculatedFinishHour]));
+      const hourById = new Map(withTime.map((t) => [t.id, t.calculatedTime]));
       const rows: PlanRow[] = order.map((t, i) => ({
         ...t,
-        calculatedFinishHour: hourById.get(t.id) ?? t.durationHours,
+        calculatedTime: hourById.get(t.id) ?? t.durationHours,
         position: i + 1,
       }));
-      const totalHours = withTime.reduce((max, t) => Math.max(max, t.calculatedFinishHour), 0);
+      const totalHours = withTime.reduce((max, t) => Math.max(max, t.calculatedTime ?? 0), 0);
       setState({ kind: 'ready', rows, totalHours });
     } catch (err) {
       setState({ kind: 'error', message: (err as Error).message });
@@ -122,7 +122,7 @@ export function PlanView() {
                 <span className={`meta meta--cx-${row.complexity.toLowerCase()}`}>{COMPLEXITY_LABEL[row.complexity]}</span>
                 <span className="meta" title="Estimated effort"><Icon name="clock" />{row.durationHours}h</span>
                 <span className="planrow__finish" title="Earliest possible finish, counting prerequisite hours">
-                  done by <b>{row.calculatedFinishHour}h</b>
+                  done by <b>{row.calculatedTime}h</b>
                 </span>
               </button>
             </li>
