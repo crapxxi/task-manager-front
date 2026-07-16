@@ -6,6 +6,8 @@ import type {
   ProjectRequest,
   RegisterRequest,
   TaskGraph,
+  TaskGroup,
+  TaskGroupRequest,
   TaskRequest,
   TaskResponse,
   TaskWithTime,
@@ -105,6 +107,16 @@ export const api = {
     req<TaskResponse[]>('PATCH', `/api/v1/tasks/${taskId}/bind/${parentId}`, type ? { query: { type } } : {}),
   unbind: (taskId: number, parentId: number) => req<TaskResponse[]>('PATCH', `/api/v1/tasks/${taskId}/unbind/${parentId}`),
   toggleStatus: (id: number) => req<TaskResponse>('PATCH', `/api/v1/tasks/${id}/toggle-status`),
+  updateBindType: (taskId: number, parentId: number, type: DependencyType) =>
+    req<TaskResponse[]>('PATCH', `/api/v1/tasks/${taskId}/dependency-update/${parentId}`, { query: { type } }),
+
+  // task groups (named super-nodes)
+  getGroups: (projectId: number) => req<TaskGroup[]>('GET', `/api/v1/groups/project/${projectId}`),
+  createGroup: (body: TaskGroupRequest) => req<TaskGroup>('POST', '/api/v1/groups', { body }),
+  updateGroup: (id: number, body: TaskGroupRequest) => req<TaskGroup>('PUT', `/api/v1/groups/${id}`, { body }),
+  deleteGroup: (id: number) => req<void>('DELETE', `/api/v1/groups/${id}`),
+  assignToGroup: (groupId: number, taskIds: number[]) =>
+    req<Record<string, number>>('PATCH', `/api/v1/groups/${groupId}/assign`, { query: { taskIds: taskIds.join(',') } }),
 
   // dependency graph
   getGraph: (projectId: number) => req<TaskGraph>('GET', `/api/v1/graph/tasks/all/${projectId}`),

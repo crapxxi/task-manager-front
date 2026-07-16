@@ -16,6 +16,7 @@ import type {
   ProjectRequest,
   RegisterRequest,
   Task,
+  TaskGroup,
   TaskRequest,
 } from './types';
 
@@ -281,6 +282,7 @@ interface TasksCtx {
   tasks: Task[];
   byId: Map<number, Task>;
   edges: GraphEdge[];
+  groups: TaskGroup[];
   reload: () => Promise<void>;
   prerequisitesOf: (id: number) => Task[];
   dependentsOf: (id: number) => Task[];
@@ -290,7 +292,15 @@ interface TasksCtx {
   remove: (id: number) => Promise<boolean>;
   bind: (taskId: number, parentId: number, type?: DependencyType) => Promise<boolean>;
   unbind: (taskId: number, parentId: number) => Promise<boolean>;
+  changeBindType: (taskId: number, parentId: number, type: DependencyType) => Promise<boolean>;
   toggle: (id: number) => Promise<boolean>;
+  createGroup: (title: string) => Promise<TaskGroup | null>;
+  renameGroup: (id: number, title: string) => Promise<boolean>;
+  removeGroup: (id: number) => Promise<boolean>;
+  setTaskGroup: (taskId: number, groupId: number | null) => Promise<boolean>;
+  assignToGroup: (groupId: number, taskIds: number[]) => Promise<boolean>;
+  /** Create a group and put the given tasks in it — one flow, one toast. */
+  groupTasks: (title: string, taskIds: number[]) => Promise<boolean>;
 }
 const TasksContext = createContext<TasksCtx | null>(null);
 
@@ -300,17 +310,25 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [edges, setEdges] = useState<GraphEdge[]>([]);
+  const [groups, setGroups] = useState<TaskGroup[]>([]);
 
   const reload = useCallback(async () => {
     if (currentId == null) {
       setTasks([]);
       setEdges([]);
+      setGroups([]);
       setStatus('ready');
       return;
     }
     try {
       // The task list carries descriptions; the graph carries the edges.
-      const [list, graph] = await Promise.all([api.getTasks(currentId), api.getGraph(currentId)]);
+      const [list, graph, groupList] = await Promise.all([
+        api.getTasks(currentId),
+        api.getGraph(currentId),
+        // Groups are an enhancement — a backend without them shouldn't take
+        // the whole board down.
+        api.getGroups(currentId).catch(() => []),
+      ]);
       setTasks(list.map((t) => ({
         id: t.id,
         title: t.title,
@@ -320,8 +338,13 @@ export function TasksProvider({ children }: { children: ReactNode }) {
         isBlocked: !!t.isBlocked,
         complexity: t.complexity ?? 'MEDIUM',
         importance: t.importance ?? 0,
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt ?? null,
+        completedAt: t.completedAt ?? null,
+        groupId: t.groupId ?? null,
       })));
       setEdges(graph.edges);
+      setGroups(groupList);
       setStatus('ready');
     } catch (err) {
       console.error('Failed to load tasks', err);
@@ -399,11 +422,77 @@ export function TasksProvider({ children }: { children: ReactNode }) {
     [run],
   );
   const unbind = useCallback((taskId: number, parentId: number) => run(() => api.unbind(taskId, parentId), 'Dependency removed'), [run]);
+  const changeBindType = useCallback(
+    (taskId: number, parentId: number, type: DependencyType) =>
+      run(() => api.updateBindType(taskId, parentId, type), type === 'OPTIONAL_LINK' ? 'Link is now optional' : 'Link is now required'),
+    [run],
+  );
   const toggle = useCallback((id: number) => run(() => api.toggleStatus(id), 'Status updated'), [run]);
 
+  // Returns the created group (not just a flag) so callers can chain an assign.
+  const createGroup = useCallback(async (title: string): Promise<TaskGroup | null> => {
+    if (currentId == null) return null;
+    try {
+      const g = await api.createGroup({ projectId: currentId, title });
+      await reload();
+      push('Group created', 'success');
+      return g;
+    } catch (err) {
+      push((err as Error).message, 'error');
+      return null;
+    }
+  }, [currentId, reload, push]);
+  const groupTasks = useCallback(async (title: string, taskIds: number[]): Promise<boolean> => {
+    if (currentId == null || taskIds.length === 0) return false;
+    try {
+      const g = await api.createGroup({ projectId: currentId, title });
+      await api.assignToGroup(g.id, taskIds);
+      await reload();
+      push(`Group “${title}” created with ${taskIds.length} task${taskIds.length === 1 ? '' : 's'}`, 'success');
+      return true;
+    } catch (err) {
+      push((err as Error).message, 'error');
+      await reload(); // the group may exist without its tasks — show the truth
+      return false;
+    }
+  }, [currentId, reload, push]);
+  const renameGroup = useCallback((id: number, title: string) => {
+    if (currentId == null) return Promise.resolve(false);
+    return run(() => api.updateGroup(id, { projectId: currentId, title }), 'Group renamed');
+  }, [run, currentId]);
+  const removeGroup = useCallback(
+    (id: number) => run(() => api.deleteGroup(id), 'Group deleted — its tasks are ungrouped'),
+    [run],
+  );
+  const assignToGroup = useCallback(
+    (groupId: number, taskIds: number[]) => run(() => api.assignToGroup(groupId, taskIds), 'Tasks added to group'),
+    [run],
+  );
+  // The update endpoint expects the full body, so rebuild it from the cached task.
+  const setTaskGroup = useCallback((taskId: number, groupId: number | null) => {
+    const t = byId.get(taskId);
+    if (!t || currentId == null) return Promise.resolve(false);
+    const body: TaskRequest = {
+      projectId: currentId,
+      title: t.title,
+      description: t.description || null,
+      durationHours: t.durationHours,
+      complexity: t.complexity,
+      importance: t.importance,
+      groupId,
+    };
+    return run(() => api.updateTask(taskId, body), groupId == null ? 'Removed from group' : 'Moved to group');
+  }, [run, byId, currentId]);
+
   const value = useMemo<TasksCtx>(
-    () => ({ status, tasks, byId, edges, reload, prerequisitesOf, dependentsOf, descendants, create, update, remove, bind, unbind, toggle }),
-    [status, tasks, byId, edges, reload, prerequisitesOf, dependentsOf, descendants, create, update, remove, bind, unbind, toggle],
+    () => ({
+      status, tasks, byId, edges, groups, reload, prerequisitesOf, dependentsOf, descendants,
+      create, update, remove, bind, unbind, changeBindType, toggle,
+      createGroup, renameGroup, removeGroup, setTaskGroup, assignToGroup, groupTasks,
+    }),
+    [status, tasks, byId, edges, groups, reload, prerequisitesOf, dependentsOf, descendants,
+      create, update, remove, bind, unbind, changeBindType, toggle,
+      createGroup, renameGroup, removeGroup, setTaskGroup, assignToGroup, groupTasks],
   );
   return <TasksContext.Provider value={value}>{children}</TasksContext.Provider>;
 }
@@ -426,6 +515,9 @@ interface UICtx {
   selectedId: number | null;
   select: (id: number) => void;
   clearSelection: () => void;
+  /** When set, the graph shows only this task and everything it unlocks. */
+  branchRoot: number | null;
+  focusBranch: (id: number | null) => void;
   search: string;
   setSearch: (s: string) => void;
   form: { task: Task | null } | null;
@@ -445,6 +537,7 @@ const UIContext = createContext<UICtx | null>(null);
 export function UIProvider({ children }: { children: ReactNode }) {
   const [view, setViewState] = useState<View>(() => (localStorage.getItem('tm.view') as View) || 'board');
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [branchRoot, setBranchRoot] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [form, setForm] = useState<{ task: Task | null } | null>(null);
   const [projectForm, setProjectForm] = useState<{ project: Project | null } | null>(null);
@@ -453,6 +546,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const setView = useCallback((v: View) => { setViewState(v); localStorage.setItem('tm.view', v); }, []);
   const select = useCallback((id: number) => setSelectedId(id), []);
   const clearSelection = useCallback(() => setSelectedId(null), []);
+  const focusBranch = useCallback((id: number | null) => setBranchRoot(id), []);
   const openCreate = useCallback(() => setForm({ task: null }), []);
   const openEdit = useCallback((task: Task) => setForm({ task }), []);
   const closeForm = useCallback(() => setForm(null), []);
@@ -470,12 +564,12 @@ export function UIProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<UICtx>(
     () => ({
-      view, setView, selectedId, select, clearSelection, search, setSearch,
+      view, setView, selectedId, select, clearSelection, branchRoot, focusBranch, search, setSearch,
       form, openCreate, openEdit, closeForm,
       projectForm, openCreateProject, openEditProject, closeProjectForm,
       confirmRequest, confirm, resolveConfirm,
     }),
-    [view, setView, selectedId, select, clearSelection, search,
+    [view, setView, selectedId, select, clearSelection, branchRoot, focusBranch, search,
       form, openCreate, openEdit, closeForm,
       projectForm, openCreateProject, openEditProject, closeProjectForm,
       confirmRequest, confirm, resolveConfirm],

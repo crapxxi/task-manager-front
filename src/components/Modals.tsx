@@ -31,7 +31,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 
 function TaskFormModal({ task }: { task: Task | null }) {
   const editing = !!task;
-  const { create, update } = useTasks();
+  const { create, update, groups } = useTasks();
   const { closeForm } = useUI();
   const { push } = useToast();
 
@@ -40,6 +40,7 @@ function TaskFormModal({ task }: { task: Task | null }) {
   const [duration, setDuration] = useState(task ? String(task.durationHours) : '');
   const [complexity, setComplexity] = useState<Complexity>(task?.complexity ?? 'MEDIUM');
   const [importance, setImportance] = useState(task?.importance ?? 0);
+  const [groupId, setGroupId] = useState<number | null>(task?.groupId ?? null);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -54,7 +55,7 @@ function TaskFormModal({ task }: { task: Task | null }) {
     if (!Number.isFinite(d) || !Number.isInteger(d) || d < 1 || d > 100) errors.push('Duration must be a whole number between 1 and 100 hours.');
     if (errors.length) { setErr(errors.join(' ')); return; }
 
-    const body = { title: t, description: description.trim() || null, durationHours: d, complexity, importance };
+    const body = { title: t, description: description.trim() || null, durationHours: d, complexity, importance, groupId };
     setSaving(true);
     setErr(null);
     try {
@@ -136,6 +137,19 @@ function TaskFormModal({ task }: { task: Task | null }) {
             ))}
           </div>
         </div>
+        {groups.length > 0 && (
+          <label className="field">
+            <span className="field__label">Group<span className="field__opt">folds together on the graph</span></span>
+            <select
+              className="input"
+              value={groupId ?? ''}
+              onChange={(e) => setGroupId(e.target.value === '' ? null : Number(e.target.value))}
+            >
+              <option value="">No group</option>
+              {groups.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
+            </select>
+          </label>
+        )}
         {err && <div className="form__err">{err}</div>}
         <div className="form__actions">
           <button type="button" className="btn btn--ghost" onClick={closeForm}>Cancel</button>

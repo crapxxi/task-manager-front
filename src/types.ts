@@ -22,12 +22,31 @@ export interface Project {
   id: number;
   title: string;
   description: string | null;
+  /** UTC instant ("2026-07-15T12:34:56Z"). */
+  createdAt: string;
 }
 
 /** Body for POST/PUT /api/projects. */
 export interface ProjectRequest {
   title: string;
   description: string | null;
+}
+
+/* ============================================================
+   Task groups (named super-nodes on the graph)
+   ============================================================ */
+
+/** GET /api/v1/groups/project/{projectId} → element; also returned by create/update. */
+export interface TaskGroup {
+  id: number;
+  projectId: number;
+  title: string;
+}
+
+/** Body for POST/PUT /api/v1/groups. */
+export interface TaskGroupRequest {
+  projectId: number;
+  title: string;
 }
 
 /* ============================================================
@@ -47,9 +66,11 @@ export interface TaskResponse {
   importance: number;
   /** Earliest possible finish hour on the critical path; only /suggest/tasks/{id}/time fills it. */
   calculatedTime: number | null;
+  /** Timestamps are UTC instants ("2026-07-15T12:34:56Z"). */
   createdAt: string;
   updatedAt: string | null;
   completedAt: string | null;
+  groupId: number | null;
 }
 
 /** GET /api/v1/suggest/tasks/{projectId}/time → TaskResponse with calculatedTime populated. */
@@ -65,6 +86,8 @@ export interface TaskRequest {
   durationHours: number;
   complexity: Complexity;
   importance: number;
+  /** Optional group; null clears the assignment. */
+  groupId: number | null;
 }
 
 /** GET /api/graph/tasks/all/{projectId} → nodes. */
@@ -107,6 +130,10 @@ export interface Task {
   isBlocked: boolean;
   complexity: Complexity;
   importance: number;
+  createdAt: string;
+  updatedAt: string | null;
+  completedAt: string | null;
+  groupId: number | null;
 }
 
 export const STATUS_LABEL: Record<TaskStatus, string> = {

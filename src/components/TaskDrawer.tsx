@@ -31,7 +31,7 @@ export function TaskDrawer() {
 }
 
 function DrawerBody({ task }: { task: Task }) {
-  const { clearSelection, openEdit, confirm } = useUI();
+  const { clearSelection, openEdit, confirm, focusBranch, setView } = useUI();
   const { prerequisitesOf, dependentsOf, remove, unbind } = useTasks();
   const prerequisites = prerequisitesOf(task.id);
   const dependents = dependentsOf(task.id);
@@ -75,10 +75,19 @@ function DrawerBody({ task }: { task: Task }) {
       <div className="drawer__actions">
         <AdvanceButton task={task} />
         <button className="btn btn--ghost" onClick={() => openEdit(task)}><Icon name="edit" />Edit</button>
+        <button
+          className="btn btn--ghost"
+          title="Show only this task and everything it unlocks on the graph"
+          onClick={() => { focusBranch(task.id); setView('graph'); clearSelection(); }}
+        >
+          <Icon name="target" />Branch
+        </button>
         <button className="btn btn--ghost btn--danger" onClick={onDelete}><Icon name="trash" />Delete</button>
       </div>
 
       <EffortWidget task={task} />
+
+      <GroupSection task={task} />
 
       <DepSection
         title="Prerequisites"
@@ -93,8 +102,35 @@ function DrawerBody({ task }: { task: Task }) {
         rows={dependents}
         onRemove={(d) => void unbind(d.id, task.id)}
       />
+
+      <div className="drawer__section">
+        <div className="drawer__label">History</div>
+        <dl className="times">
+          <dt>Created</dt>
+          <dd>{formatDateTime(task.createdAt) ?? '—'}</dd>
+          <dt>Updated</dt>
+          <dd>{formatDateTime(task.updatedAt) ?? '—'}</dd>
+          {task.completedAt && (
+            <>
+              <dt>Completed</dt>
+              <dd>{formatDateTime(task.completedAt)}</dd>
+            </>
+          )}
+        </dl>
+      </div>
     </aside>
   );
+}
+
+/** Backend sends UTC instants ("2026-07-15T12:34:56Z") — rendered in the viewer's local time. */
+function formatDateTime(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString(undefined, {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
 }
 
 type EffortState =
@@ -180,6 +216,33 @@ function DepSection({ title, subtitle, rows, onRemove, footer }: {
         <div className="muted small">None</div>
       )}
       {footer}
+    </div>
+  );
+}
+
+/** Quick group picker — groups are managed on the graph's Groups panel. */
+function GroupSection({ task }: { task: Task }) {
+  const { groups, setTaskGroup } = useTasks();
+  const [busy, setBusy] = useState(false);
+  if (groups.length === 0 && task.groupId == null) return null;
+
+  return (
+    <div className="drawer__section">
+      <div className="drawer__label">Group</div>
+      <select
+        className="input input--sm"
+        disabled={busy}
+        value={task.groupId ?? ''}
+        onChange={async (e) => {
+          const next = e.target.value === '' ? null : Number(e.target.value);
+          setBusy(true);
+          await setTaskGroup(task.id, next);
+          setBusy(false);
+        }}
+      >
+        <option value="">No group</option>
+        {groups.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
+      </select>
     </div>
   );
 }

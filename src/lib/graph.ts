@@ -1,5 +1,3 @@
-import type { GraphEdge, Task } from '../types';
-
 export const NODE_W = 210;
 export const NODE_H = 64;
 const HGAP = 48;
@@ -10,11 +8,15 @@ export interface XY {
   y: number;
 }
 
+/** The layout doesn't care about tasks per se — group super-nodes flow through it too. */
+export interface LayoutNode { id: number; title: string }
+export interface LayoutLink { sourceId: number; targetId: number }
+
 /**
  * Layered ("Sugiyama"-ish) layout for the dependency DAG.
  * Prerequisites sit above their dependents; barycenter sweeps reduce crossings.
  */
-export function computeLayout(tasks: Task[], edges: GraphEdge[]): Map<number, XY> {
+export function computeLayout(tasks: LayoutNode[], edges: LayoutLink[]): Map<number, XY> {
   const ids = new Set(tasks.map((t) => t.id));
   const out = new Map<number, number[]>();
   const indeg = new Map<number, number>();
@@ -85,6 +87,59 @@ export function computeLayout(tasks: Task[], edges: GraphEdge[]): Map<number, XY
     );
   });
   return positions;
+}
+
+/**
+ * Branch collapse for super-nodes. Given the set of collapsed node ids,
+ * returns hiddenId → the collapsed "representative" that swallowed it.
+ *
+ * A node hides only when *every* incoming route is covered by a collapsed or
+ * already-hidden parent — a task that is also reachable from a visible branch
+ * (a shared prerequisite chain) stays on the board. Nodes are processed in
+ * topological order; anything left unordered (a cycle would be a backend bug)
+ * stays visible rather than vanishing.
+ */
+export function computeCollapse(
+  taskIds: number[],
+  edges: LayoutLink[],
+  collapsed: Set<number>,
+): Map<number, number> {
+  const ids = new Set(taskIds);
+  const out = new Map<number, number[]>();
+  const parents = new Map<number, number[]>();
+  const indeg = new Map<number, number>();
+  for (const id of taskIds) { out.set(id, []); parents.set(id, []); indeg.set(id, 0); }
+  for (const e of edges) {
+    if (!ids.has(e.sourceId) || !ids.has(e.targetId)) continue;
+    out.get(e.sourceId)!.push(e.targetId);
+    parents.get(e.targetId)!.push(e.sourceId);
+    indeg.set(e.targetId, indeg.get(e.targetId)! + 1);
+  }
+
+  const queue: number[] = [];
+  const work = new Map(indeg);
+  for (const id of taskIds) if (work.get(id) === 0) queue.push(id);
+  const rep = new Map<number, number>();
+  for (let i = 0; i < queue.length; i++) {
+    const v = queue[i];
+    const ps = parents.get(v)!;
+    if (ps.length) {
+      let repId: number | null = null;
+      let covered = true;
+      for (const p of ps) {
+        const hiddenBy = rep.get(p);
+        if (hiddenBy != null) repId ??= hiddenBy;
+        else if (collapsed.has(p)) repId ??= p;
+        else { covered = false; break; }
+      }
+      if (covered && repId != null) rep.set(v, repId);
+    }
+    for (const w of out.get(v)!) {
+      work.set(w, work.get(w)! - 1);
+      if (work.get(w) === 0) queue.push(w);
+    }
+  }
+  return rep;
 }
 
 /**
