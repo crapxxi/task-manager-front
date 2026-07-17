@@ -71,6 +71,8 @@ export interface TaskResponse {
   updatedAt: string | null;
   completedAt: string | null;
   groupId: number | null;
+  /** Set when the task belongs to an archived branch; active tasks carry null. */
+  archiveId: number | null;
 }
 
 /** GET /api/v1/suggest/tasks/{projectId}/time → TaskResponse with calculatedTime populated. */
@@ -110,6 +112,19 @@ export interface GraphEdge {
 export interface TaskGraph {
   nodes: GraphNode[];
   edges: GraphEdge[];
+}
+
+/* ============================================================
+   Graph archives — history of completed branches
+   ============================================================ */
+
+/** GET /api/v1/archives/{projectId} → element; one archive = one archived branch set. */
+export interface GraphArchive {
+  id: number;
+  projectId: number;
+  title: string;
+  /** UTC instant ("2026-07-15T12:34:56Z"). */
+  archivedAt: string;
 }
 
 /** The backend's ErrorResponse body. */

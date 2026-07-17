@@ -20,7 +20,15 @@ import {
   type LayoutNode,
   type XY,
 } from '../lib/graph';
-import { IMPORTANCE_LABEL, STATUS_LABEL, type DependencyType, type GraphEdge, type Task } from '../types';
+import {
+  IMPORTANCE_LABEL,
+  STATUS_LABEL,
+  type DependencyType,
+  type GraphArchive,
+  type GraphEdge,
+  type Task,
+  type TaskGraph,
+} from '../types';
 import { ConnectionError, EmptyState, LoadingState } from './ui';
 
 interface Transform { tx: number; ty: number; k: number }
@@ -30,6 +38,7 @@ type Drag =
   | { type: 'node'; id: number; sx: number; sy: number; ox: number; oy: number; moved: boolean }
   | { type: 'connect'; sourceId: number }
   | { type: 'chip'; id: number; sx: number; sy: number; moved: boolean }
+  | { type: 'branch'; id: number; sx: number; sy: number; moved: boolean }
   | { type: 'edge'; id: number; sx: number; sy: number; moved: boolean };
 
 interface ConnectState {
@@ -103,6 +112,7 @@ export function GraphView() {
   const {
     status, tasks, byId, edges, groups, descendants,
     bind, unbind, changeBindType, createGroup, renameGroup, removeGroup, assignToGroup, groupTasks,
+    archives, archiveBranch, restoreArchive, fetchArchiveGraph,
   } = useTasks();
   const { selectedId, select, branchRoot, focusBranch, form, projectForm, confirmRequest, confirm } = useUI();
   const { username } = useAuth();
@@ -119,6 +129,11 @@ export function GraphView() {
   const [connect, setConnect] = useState<ConnectState | null>(null);
   const [popover, setPopover] = useState<Popover | null>(null);
   const [panel, setPanel] = useState(false);
+  // Archive history: side panel with past archives, a bottom bar that names the
+  // branch being archived, and a read-only viewer for one archive's graph.
+  const [histPanel, setHistPanel] = useState(false);
+  const [archiveBar, setArchiveBar] = useState(false);
+  const [viewerArchive, setViewerArchive] = useState<GraphArchive | null>(null);
   // Multi-select mode: taps pick tasks instead of opening the panel, then the
   // action bar turns the picked set into a group in one go.
   const [selectMode, setSelectMode] = useState(false);
@@ -145,6 +160,9 @@ export function GraphView() {
       focusBranch(null);
       setSelectMode(false);
       setPicked(new Set());
+      setHistPanel(false);
+      setArchiveBar(false);
+      setViewerArchive(null);
     }
   }, [currentId, focusBranch]);
   useEffect(() => {
@@ -383,6 +401,9 @@ export function GraphView() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      if (viewerArchive) { setViewerArchive(null); e.stopImmediatePropagation(); return; }
+      if (archiveBar) { setArchiveBar(false); e.stopImmediatePropagation(); return; }
+      if (histPanel) { setHistPanel(false); e.stopImmediatePropagation(); return; }
       if (panel) { setPanel(false); e.stopImmediatePropagation(); return; }
       if (popover) { setPopover(null); e.stopImmediatePropagation(); return; }
       if (connect) {
@@ -465,6 +486,7 @@ export function GraphView() {
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (popover) setPopover(null);
     if (panel) setPanel(false);
+    if (histPanel) setHistPanel(false);
 
     // Second finger down → begin pinch-zoom; abandon any single-pointer gesture.
     if (pointers.current.size === 2) {
@@ -501,6 +523,11 @@ export function GraphView() {
     const chip = el.closest('[data-collapse]');
     if (chip) {
       drag.current = { type: 'chip', id: Number(chip.getAttribute('data-collapse')), sx: e.clientX, sy: e.clientY, moved: false };
+      return;
+    }
+    const branchEl = el.closest('[data-branch]');
+    if (branchEl) {
+      drag.current = { type: 'branch', id: Number(branchEl.getAttribute('data-branch')), sx: e.clientX, sy: e.clientY, moved: false };
       return;
     }
     const node = el.closest('[data-node]');
@@ -585,6 +612,8 @@ export function GraphView() {
         else if (selectMode) togglePick(d.id);
         else select(d.id);
       } else if (d.type === 'chip' && !d.moved) toggleCollapse(d.id);
+      // Tap the ◎ on a node: focus its branch; tapping the current root exits.
+      else if (d.type === 'branch' && !d.moved) focusBranch(branchRoot === d.id ? null : d.id);
       else if (d.type === 'edge' && !d.moved) {
         openPopoverAt(e.clientX, e.clientY, (x, y) => ({ kind: 'edge', edgeId: d.id, x, y }));
       } else if (d.type === 'connect') {
@@ -673,6 +702,10 @@ export function GraphView() {
   const popEdge = popover?.kind === 'edge' ? edges.find((e) => e.id === popover.edgeId) : null;
   const popSourceExpired = popover?.kind === 'create' && byId.get(popover.sourceId)?.status === 'EXPIRED';
   const collapsedCount = branchRep.size;
+  // A branch can be archived only when every task in it is completed — the
+  // backend enforces the same rule, this just keeps the button honest.
+  const branchAllCompleted = branchSet != null && scopedTasks.length > 0 &&
+    scopedTasks.every((t) => t.status === 'COMPLETED');
 
   return (
     <section className={`view graph ${full ? 'graph--full' : ''}`}>
@@ -698,13 +731,31 @@ export function GraphView() {
               <Icon name="x" />
             </button>
           )}
+          {branchSet && (
+            <button
+              className="btn btn--sm"
+              disabled={!branchAllCompleted}
+              title={branchAllCompleted
+                ? 'Move this completed branch into the archive'
+                : 'Only a fully completed branch can be archived'}
+              onClick={() => {
+                exitSelect();
+                setPanel(false);
+                setHistPanel(false);
+                setArchiveBar(true);
+              }}
+            >
+              <Icon name="archive" />
+              <span className="gbtn__label">Archive</span>
+            </button>
+          )}
           {collapsedCount > 0 && (
             <button
               className="btn btn--ghost btn--sm"
               title="Expand all collapsed branches"
               onClick={() => setCollapsed(new Set())}
             >
-              {collapsedCount} hidden — expand
+              {collapsedCount} hidden<span className="gbtn__label"> — expand</span>
             </button>
           )}
           <button
@@ -714,16 +765,25 @@ export function GraphView() {
             onClick={() => (selectMode ? exitSelect() : setSelectMode(true))}
           >
             <Icon name="check" />
-            Select
+            <span className="gbtn__label">Select</span>
           </button>
           <button
             className={`btn btn--ghost btn--sm ${panel ? 'is-active' : ''}`}
             title="Task groups"
             aria-expanded={panel}
-            onClick={() => setPanel((p) => !p)}
+            onClick={() => { setPanel((p) => !p); setHistPanel(false); }}
           >
             <Icon name="folder" />
-            Groups{groups.length > 0 ? ` (${groups.length})` : ''}
+            <span className="gbtn__label">Groups{groups.length > 0 ? ` (${groups.length})` : ''}</span>
+          </button>
+          <button
+            className={`btn btn--ghost btn--sm ${histPanel ? 'is-active' : ''}`}
+            title="Archived branches — the graph's history"
+            aria-expanded={histPanel}
+            onClick={() => { setHistPanel((h) => !h); setPanel(false); }}
+          >
+            <Icon name="archive" />
+            <span className="gbtn__label">History{archives.length > 0 ? ` (${archives.length})` : ''}</span>
           </button>
           <button className="iconbtn" title="Fit to view" onClick={fitToView}><Icon name="fit" /></button>
           <button
@@ -822,6 +882,7 @@ export function GraphView() {
                     childCount={childCounts.get(t.id) ?? 0}
                     selectable={selectMode}
                     picked={picked.has(t.id)}
+                    isBranchRoot={branchRoot === t.id}
                     onHover={setHoverId}
                   />
                 );
@@ -918,8 +979,42 @@ export function GraphView() {
           />
         )}
 
+        {histPanel && (
+          <HistoryPanel
+            archives={archives}
+            onView={(a) => setViewerArchive(a)}
+            onRestore={async (a) => {
+              const ok = await confirm({
+                title: 'Restore branch',
+                message: `Return “${a.title}” to the active graph? Its tasks become part of the project again.`,
+                confirmLabel: 'Restore',
+              });
+              if (ok) await restoreArchive(a.id);
+            }}
+            onClose={() => setHistPanel(false)}
+          />
+        )}
+
+        {archiveBar && branchSet && branchRoot != null && (
+          <ArchiveBar
+            count={scopedTasks.length}
+            onArchive={async (title) => {
+              if (await archiveBranch(branchRoot, title)) setArchiveBar(false);
+            }}
+            onCancel={() => setArchiveBar(false)}
+          />
+        )}
+
         {overlay && <div className="graph-overlay">{overlay}</div>}
       </div>
+
+      {viewerArchive && (
+        <ArchiveViewer
+          archive={viewerArchive}
+          fetchGraph={fetchArchiveGraph}
+          onClose={() => setViewerArchive(null)}
+        />
+      )}
       <div className="graph-help muted small" aria-hidden="true">
         Drag from a node’s ○ to another task to add a dependency · tap a line to edit it · ⊖ folds a branch
       </div>
@@ -998,10 +1093,10 @@ function SelectBar({ count, groups, busyDisabled, onAssign, onCreate, onDone }: 
   );
 }
 
-function TaskNode({ task, p, selected, dim, highlight, isCollapsed, hiddenCount, childCount, selectable, picked, onHover }: {
+function TaskNode({ task, p, selected, dim, highlight, isCollapsed, hiddenCount, childCount, selectable, picked, isBranchRoot, onHover }: {
   task: Task; p: XY; selected: boolean; dim: boolean; highlight: boolean;
   isCollapsed: boolean; hiddenCount: number; childCount: number;
-  selectable: boolean; picked: boolean;
+  selectable: boolean; picked: boolean; isBranchRoot: boolean;
   onHover: (id: number | null) => void;
 }) {
   const badge = isCollapsed ? `+${hiddenCount}` : '−';
@@ -1050,6 +1145,19 @@ function TaskNode({ task, p, selected, dim, highlight, isCollapsed, hiddenCount,
               d={`M ${NODE_W / 2 - 18} ${-NODE_H / 2 + 14} l 3 3.5 l 5.5 -7`}
             />
           )}
+        </g>
+      )}
+
+      {/* Branch focus: tap the ◎ to narrow the board to this task and
+          everything it unlocks; tapping the active root exits. Hidden in
+          select mode — its corner belongs to the pick checkbox there. */}
+      {!selectable && (childCount > 0 || isBranchRoot) && (
+        <g className={`gnode__branch ${isBranchRoot ? 'is-root' : ''}`} data-branch={task.id}>
+          <circle className="gnode__branch-hit" cx={NODE_W / 2 - 20} cy={-NODE_H / 2} r={14} />
+          <circle className="gnode__branch-bg" cx={NODE_W / 2 - 20} cy={-NODE_H / 2} r={9} />
+          <circle className="gnode__branch-ring" cx={NODE_W / 2 - 20} cy={-NODE_H / 2} r={4.5} />
+          <circle className="gnode__branch-core" cx={NODE_W / 2 - 20} cy={-NODE_H / 2} r={1.6} />
+          <title>{isBranchRoot ? 'Exit branch focus' : 'Focus this branch'}</title>
         </g>
       )}
 
@@ -1222,5 +1330,200 @@ function LegendSwatch({ color, label }: { color: string; label: string }) {
       <span className="legend__swatch" style={{ background: color }} />
       {label}
     </span>
+  );
+}
+
+/* ============================================================
+   Archive history — completed branches moved off the active graph
+   ============================================================ */
+
+const formatArchiveDate = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ''
+    : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+function HistoryPanel({ archives, onView, onRestore, onClose }: {
+  archives: GraphArchive[];
+  onView: (a: GraphArchive) => void;
+  onRestore: (a: GraphArchive) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="gpanel">
+      <div className="gpanel__head">
+        <span className="gpanel__title"><Icon name="archive" /> History</span>
+        <button className="iconbtn iconbtn--sm" title="Close" onClick={onClose}><Icon name="x" /></button>
+      </div>
+      <div className="gpanel__list">
+        {archives.length === 0 && (
+          <div className="muted small gpanel__empty">
+            No archived branches yet. Focus a fully completed branch and hit
+            “Archive” — it moves off the board but stays here.
+          </div>
+        )}
+        {archives.map((a) => (
+          <div key={a.id} className="gpanel__row">
+            <span className="gpanel__name" title={a.title}>
+              {a.title} <span className="muted">· {formatArchiveDate(a.archivedAt)}</span>
+            </span>
+            <button className="btn btn--ghost btn--sm" title="Open a read-only view of this branch" onClick={() => onView(a)}>
+              View
+            </button>
+            <button className="btn btn--ghost btn--sm" title="Return the branch to the active graph" onClick={() => onRestore(a)}>
+              Restore
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ArchiveBar({ count, onArchive, onCancel }: {
+  count: number;
+  onArchive: (title: string | null) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (busy) return;
+    setBusy(true);
+    await onArchive(title.trim() || null);
+    setBusy(false);
+  }
+
+  return (
+    <div className="gselbar">
+      <span className="gselbar__count"><Icon name="archive" /> {count} task{count === 1 ? '' : 's'}</span>
+      <span className="gselbar__pair">
+        <input
+          className="input input--sm"
+          placeholder="Archive name (optional)…"
+          maxLength={255}
+          autoFocus
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' || busy) return;
+            e.preventDefault();
+            void submit();
+          }}
+        />
+        <button className="btn btn--sm" disabled={busy} onClick={() => void submit()}>
+          <Icon name="archive" />Archive
+        </button>
+      </span>
+      <button className="iconbtn" title="Cancel" onClick={onCancel}><Icon name="x" /></button>
+    </div>
+  );
+}
+
+type ViewerState =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ok'; graph: TaskGraph };
+
+/** Read-only look at one archive's graph, laid out like the live board. */
+function ArchiveViewer({ archive, fetchGraph, onClose }: {
+  archive: GraphArchive;
+  fetchGraph: (archiveId: number) => Promise<TaskGraph>;
+  onClose: () => void;
+}) {
+  const [state, setState] = useState<ViewerState>({ kind: 'loading' });
+
+  useEffect(() => {
+    let alive = true;
+    setState({ kind: 'loading' });
+    fetchGraph(archive.id)
+      .then((graph) => { if (alive) setState({ kind: 'ok', graph }); })
+      .catch((err) => { if (alive) setState({ kind: 'error', message: (err as Error).message }); });
+    return () => { alive = false; };
+  }, [archive.id, fetchGraph]);
+
+  const layout = useMemo(
+    () => state.kind === 'ok'
+      ? computeLayout(state.graph.nodes.map((n) => ({ id: n.id, title: n.title })), state.graph.edges)
+      : null,
+    [state],
+  );
+
+  // The graph is static, so a fitted viewBox replaces pan/zoom machinery.
+  const viewBox = useMemo(() => {
+    if (!layout || layout.size === 0) return '0 0 100 100';
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of layout.values()) {
+      minX = Math.min(minX, p.x - NODE_W / 2);
+      maxX = Math.max(maxX, p.x + NODE_W / 2);
+      minY = Math.min(minY, p.y - NODE_H / 2);
+      maxY = Math.max(maxY, p.y + NODE_H / 2);
+    }
+    const pad = 32;
+    return `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`;
+  }, [layout]);
+
+  return (
+    <div className="modal-root">
+      <div className="modal-backdrop" onClick={onClose} />
+      <div className="modal modal--graph" role="dialog" aria-modal="true">
+        <div className="modal__head">
+          <h2 className="modal__title">{archive.title}</h2>
+          <button className="iconbtn" title="Close" onClick={onClose}><Icon name="x" /></button>
+        </div>
+        <div className="modal__body">
+          <div className="muted small archview__meta">
+            Archived {formatArchiveDate(archive.archivedAt)}
+            {state.kind === 'ok' && ` · ${state.graph.nodes.length} task${state.graph.nodes.length === 1 ? '' : 's'}`}
+          </div>
+          <div className="archview__canvas">
+            {state.kind === 'loading' && <div className="archview__center muted">Loading…</div>}
+            {state.kind === 'error' && <div className="archview__center danger">{state.message}</div>}
+            {state.kind === 'ok' && layout && (
+              <svg className="archview__svg" viewBox={viewBox} preserveAspectRatio="xMidYMid meet">
+                <defs>
+                  <marker id="arrow-arch" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+                    <path d="M0 0 L10 5 L0 10 z" fill="context-stroke" />
+                  </marker>
+                </defs>
+                <g className="edges">
+                  {state.graph.edges.map((e) => {
+                    const a = layout.get(e.sourceId);
+                    const b = layout.get(e.targetId);
+                    if (!a || !b) return null;
+                    return (
+                      <path
+                        key={e.id}
+                        className={`edge edge--${e.type === 'OPTIONAL_LINK' ? 'optional' : 'strict'}`}
+                        d={edgePath(a, b)}
+                        markerEnd="url(#arrow-arch)"
+                      />
+                    );
+                  })}
+                </g>
+                <g className="nodes">
+                  {state.graph.nodes.map((n) => {
+                    const p = layout.get(n.id);
+                    if (!p) return null;
+                    return (
+                      <g key={n.id} className={`gnode gnode--${n.status.toLowerCase()}`} transform={`translate(${p.x},${p.y})`}>
+                        <rect className="gnode__box" x={-NODE_W / 2} y={-NODE_H / 2} width={NODE_W} height={NODE_H} rx={12} />
+                        <circle className="gnode__dot" cx={-NODE_W / 2 + 20} cy={-10} r={4} />
+                        <text className="gnode__title" x={-NODE_W / 2 + 32} y={-6}>{truncate(n.title, 20)}</text>
+                        <text className="gnode__sub" x={-NODE_W / 2 + 32} y={16}>
+                          {n.durationHours}h · {STATUS_LABEL[n.status]}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </g>
+              </svg>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

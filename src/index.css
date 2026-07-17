@@ -829,6 +829,20 @@ h1, h2, h3, p { margin: 0; }
 
 .confirm__msg { color: var(--text-dim); margin-bottom: 18px; }
 
+/* Archive viewer — a read-only snapshot of an archived branch */
+.modal--graph { width: min(900px, 100%); }
+.archview__meta { margin-bottom: 10px; }
+.archview__canvas {
+  position: relative;
+  height: min(60vh, 520px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  overflow: hidden;
+}
+.archview__svg { width: 100%; height: 100%; display: block; pointer-events: none; }
+.archview__center { position: absolute; inset: 0; display: grid; place-items: center; }
+
 /* ============================================================
    Forms
    ============================================================ */
@@ -1018,7 +1032,7 @@ h1, h2, h3, p { margin: 0; }
 .legend__line { width: 18px; height: 0; border-top: 2px solid var(--edge); }
 .legend__line--dash { border-top-style: dashed; }
 
-.gbtns { display: flex; align-items: center; gap: 4px; }
+.gbtns { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 
 .graph-hint { color: var(--text-faint); font-size: 12px; margin-right: 6px; white-space: nowrap; }
 
@@ -1149,6 +1163,26 @@ h1, h2, h3, p { margin: 0; }
   stroke-width: 16;
   pointer-events: stroke;
   cursor: pointer;
+}
+
+/* Branch-focus chip (◎): straddles the node's top edge; hover-revealed on
+   desktop, quietly visible on touch, always on for the active root. */
+.gnode__branch { cursor: pointer; opacity: 0; transition: opacity 0.12s; }
+.gnode__branch-hit { fill: transparent; }
+.gnode__branch-bg { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1; transition: stroke 0.12s; }
+.gnode__branch-ring { fill: none; stroke: var(--text-dim); stroke-width: 1.4; transition: stroke 0.12s; }
+.gnode__branch-core { fill: var(--text-dim); transition: fill 0.12s; }
+.gnode:hover .gnode__branch { opacity: 1; }
+.gnode__branch:hover .gnode__branch-bg { stroke: var(--primary); }
+.gnode__branch:hover .gnode__branch-ring { stroke: var(--primary); }
+.gnode__branch:hover .gnode__branch-core { fill: var(--primary); }
+.gnode__branch.is-root { opacity: 1; }
+.gnode__branch.is-root .gnode__branch-bg { stroke: var(--primary); }
+.gnode__branch.is-root .gnode__branch-ring { stroke: var(--primary); }
+.gnode__branch.is-root .gnode__branch-core { fill: var(--primary); }
+@media (pointer: coarse) {
+  .gnode__branch { opacity: 0.65; }
+  .gnode__branch.is-root { opacity: 1; }
 }
 
 .gnode__handle { cursor: crosshair; }
@@ -1466,10 +1500,13 @@ h1, h2, h3, p { margin: 0; }
   .main { padding: 0 12px; }
   .drawer { width: 100vw; }
 
-  /* Graph on a phone: drop the legend, grow the touch targets, and let
-     fullscreen use every pixel. */
+  /* Graph on a phone: drop the legend, shrink text buttons to their icons
+     (tooltips keep the meaning), grow the touch targets, and let fullscreen
+     use every pixel. */
   .graph .legend { display: none; }
   .graph-toolbar { justify-content: flex-end; }
   .gbtns .iconbtn { width: 38px; height: 38px; }
+  .gbtn__label { display: none; }
+  .gbranch { max-width: 42vw; }
   .graph.graph--full { padding: 8px 10px 6px; }
 }

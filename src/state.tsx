@@ -11,11 +11,13 @@ import {
 import { api, clearToken, getToken, setToken, UNAUTHORIZED_EVENT } from './api';
 import type {
   DependencyType,
+  GraphArchive,
   GraphEdge,
   Project,
   ProjectRequest,
   RegisterRequest,
   Task,
+  TaskGraph,
   TaskGroup,
   TaskRequest,
 } from './types';
@@ -301,6 +303,14 @@ interface TasksCtx {
   assignToGroup: (groupId: number, taskIds: number[]) => Promise<boolean>;
   /** Create a group and put the given tasks in it — one flow, one toast. */
   groupTasks: (title: string, taskIds: number[]) => Promise<boolean>;
+  /** History of archived branches for the current project (newest first). */
+  archives: GraphArchive[];
+  /** Archive a completed branch: the root task plus everything it unlocks. */
+  archiveBranch: (rootId: number, title: string | null) => Promise<boolean>;
+  /** Bring an archived branch back into the active graph. */
+  restoreArchive: (archiveId: number) => Promise<boolean>;
+  /** Nodes + edges inside one archive (for the read-only viewer). */
+  fetchArchiveGraph: (archiveId: number) => Promise<TaskGraph>;
 }
 const TasksContext = createContext<TasksCtx | null>(null);
 
@@ -311,25 +321,30 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [edges, setEdges] = useState<GraphEdge[]>([]);
   const [groups, setGroups] = useState<TaskGroup[]>([]);
+  const [archives, setArchives] = useState<GraphArchive[]>([]);
 
   const reload = useCallback(async () => {
     if (currentId == null) {
       setTasks([]);
       setEdges([]);
       setGroups([]);
+      setArchives([]);
       setStatus('ready');
       return;
     }
     try {
       // The task list carries descriptions; the graph carries the edges.
-      const [list, graph, groupList] = await Promise.all([
+      const [list, graph, groupList, archiveList] = await Promise.all([
         api.getTasks(currentId),
         api.getGraph(currentId),
-        // Groups are an enhancement — a backend without them shouldn't take
-        // the whole board down.
+        // Groups and archives are enhancements — a backend without them
+        // shouldn't take the whole board down.
         api.getGroups(currentId).catch(() => []),
+        api.getArchives(currentId).catch(() => []),
       ]);
-      setTasks(list.map((t) => ({
+      // The list endpoint returns archived tasks too — only active ones belong
+      // on the board; archived branches live behind the graph's History panel.
+      setTasks(list.filter((t) => t.archiveId == null).map((t) => ({
         id: t.id,
         title: t.title,
         description: t.description ?? '',
@@ -345,6 +360,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       })));
       setEdges(graph.edges);
       setGroups(groupList);
+      setArchives([...archiveList].sort((a, b) => b.archivedAt.localeCompare(a.archivedAt)));
       setStatus('ready');
     } catch (err) {
       console.error('Failed to load tasks', err);
@@ -484,15 +500,30 @@ export function TasksProvider({ children }: { children: ReactNode }) {
     return run(() => api.updateTask(taskId, body), groupId == null ? 'Removed from group' : 'Moved to group');
   }, [run, byId, currentId]);
 
+  const archiveBranch = useCallback((rootId: number, title: string | null) => {
+    if (currentId == null) return Promise.resolve(false);
+    return run(() => api.archiveBranches(currentId, [rootId], title), 'Branch archived');
+  }, [run, currentId]);
+  const restoreArchive = useCallback((archiveId: number) => {
+    if (currentId == null) return Promise.resolve(false);
+    return run(() => api.restoreArchive(currentId, archiveId), 'Branch restored to the graph');
+  }, [run, currentId]);
+  const fetchArchiveGraph = useCallback((archiveId: number) => {
+    if (currentId == null) return Promise.reject(new Error('No project selected'));
+    return api.getArchiveGraph(currentId, archiveId);
+  }, [currentId]);
+
   const value = useMemo<TasksCtx>(
     () => ({
       status, tasks, byId, edges, groups, reload, prerequisitesOf, dependentsOf, descendants,
       create, update, remove, bind, unbind, changeBindType, toggle,
       createGroup, renameGroup, removeGroup, setTaskGroup, assignToGroup, groupTasks,
+      archives, archiveBranch, restoreArchive, fetchArchiveGraph,
     }),
     [status, tasks, byId, edges, groups, reload, prerequisitesOf, dependentsOf, descendants,
       create, update, remove, bind, unbind, changeBindType, toggle,
-      createGroup, renameGroup, removeGroup, setTaskGroup, assignToGroup, groupTasks],
+      createGroup, renameGroup, removeGroup, setTaskGroup, assignToGroup, groupTasks,
+      archives, archiveBranch, restoreArchive, fetchArchiveGraph],
   );
   return <TasksContext.Provider value={value}>{children}</TasksContext.Provider>;
 }

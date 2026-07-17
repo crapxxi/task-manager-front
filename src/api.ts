@@ -1,6 +1,7 @@
 import type {
   AuthResponse,
   DependencyType,
+  GraphArchive,
   LoginRequest,
   Project,
   ProjectRequest,
@@ -120,6 +121,15 @@ export const api = {
 
   // dependency graph
   getGraph: (projectId: number) => req<TaskGraph>('GET', `/api/v1/graph/tasks/all/${projectId}`),
+
+  // graph archives (history of completed branches)
+  archiveBranches: (projectId: number, rootTaskIds: number[], title: string | null) =>
+    req<GraphArchive>('POST', `/api/v1/archives/${projectId}`, { body: { rootTaskIds, title } }),
+  getArchives: (projectId: number) => req<GraphArchive[]>('GET', `/api/v1/archives/${projectId}`),
+  getArchiveGraph: (projectId: number, archiveId: number) =>
+    req<TaskGraph>('GET', `/api/v1/archives/${projectId}/${archiveId}`),
+  restoreArchive: (projectId: number, archiveId: number) =>
+    req<void>('DELETE', `/api/v1/archives/${projectId}/${archiveId}`),
   calcDuration: (taskId: number) => req<number>('GET', `/api/v1/graph/tasks/${taskId}/calculate-duration`),
 
   // suggested execution plan (TODO tasks, topological order by critical path)
