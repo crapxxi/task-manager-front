@@ -10,6 +10,7 @@ import {
   type RefObject,
 } from 'react';
 import { Icon } from '../icons';
+import { api } from '../api';
 import { useAuth, useProjects, useTasks, useUI } from '../state';
 import {
   computeCollapse,
@@ -30,6 +31,7 @@ import {
   type GraphEdge,
   type Task,
   type TaskGraph,
+  type TaskGroup,
 } from '../types';
 import { ConnectionError, EmptyState, LoadingState } from './ui';
 
@@ -111,7 +113,7 @@ export function GraphView() {
   const {
     status, tasks, byId, edges, groups, descendants, strictDescendants, influenceById,
     bind, unbind, changeBindType, createGroup, renameGroup, removeGroup, assignToGroup, groupTasks,
-    archives, archiveBranch, restoreArchive, fetchArchiveGraph,
+    archives, archivesTotal, loadMoreArchives, archiveBranch, restoreArchive, fetchArchiveGraph,
   } = useTasks();
   const { selectedId, select, branchRoot, focusBranch, form, projectForm, confirmRequest, confirm } = useUI();
   const { username } = useAuth();
@@ -261,13 +263,6 @@ export function GraphView() {
     }
     return m;
   }, [scopedTasks, scopedEdges]);
-
-  /** Group member counts for the management panel (independent of folding). */
-  const memberCounts = useMemo(() => {
-    const m = new Map<number, number>();
-    for (const t of tasks) if (t.groupId != null) m.set(t.groupId, (m.get(t.groupId) ?? 0) + 1);
-    return m;
-  }, [tasks]);
 
   /* Edges to draw: endpoints hidden by a fold are re-routed to their
      super-node, so bundles crossing the fold stay visible as one faint link. */
@@ -861,7 +856,7 @@ export function GraphView() {
             onClick={() => { setHistPanel((h) => !h); setPanel(false); }}
           >
             <Icon name="archive" />
-            <span className="gbtn__label">History{archives.length > 0 ? ` (${archives.length})` : ''}</span>
+            <span className="gbtn__label">History{archivesTotal > 0 ? ` (${archivesTotal})` : ''}</span>
           </button>
           <button className="iconbtn" title="Fit to view" onClick={fitToView}><Icon name="fit" /></button>
           <button
@@ -1037,8 +1032,7 @@ export function GraphView() {
 
         {panel && (
           <GroupsPanel
-            groups={groups}
-            memberCounts={memberCounts}
+            projectId={currentId}
             folded={foldedGroups}
             onFold={foldGroup}
             onUnfold={unfoldGroup}
@@ -1047,7 +1041,7 @@ export function GraphView() {
             onDelete={async (g) => {
               const ok = await confirm({
                 title: 'Delete group',
-                message: `Delete “${g.title}”? Its ${memberCounts.get(g.id) ?? 0} tasks stay — they just leave the group.`,
+                message: `Delete “${g.title}”? Its tasks stay — they just leave the group.`,
                 confirmLabel: 'Delete',
               });
               if (ok) await removeGroup(g.id);
@@ -1074,6 +1068,8 @@ export function GraphView() {
         {histPanel && (
           <HistoryPanel
             archives={archives}
+            total={archivesTotal}
+            onLoadMore={loadMoreArchives}
             onView={(a) => setViewerArchive(a)}
             onRestore={async (a) => {
               const ok = await confirm({
@@ -1350,21 +1346,71 @@ function GroupSuperNode({ node, p, dim }: { node: GroupNode; p: XY; dim: boolean
   );
 }
 
-function GroupsPanel({ groups, memberCounts, folded, onFold, onUnfold, onCreate, onRename, onDelete, onClose }: {
-  groups: { id: number; title: string }[];
-  memberCounts: Map<number, number>;
+/** Server page size for the group management list; backend caps size at 100. */
+const GROUP_PAGE_SIZE = 20;
+
+function GroupsPanel({ projectId, folded, onFold, onUnfold, onCreate, onRename, onDelete, onClose }: {
+  projectId: number | null;
   folded: Set<number>;
   onFold: (gid: number) => void;
   onUnfold: (gid: number) => void;
   onCreate: (title: string) => Promise<unknown>;
   onRename: (gid: number, title: string) => Promise<boolean>;
-  onDelete: (g: { id: number; title: string }) => void;
+  onDelete: (g: TaskGroup) => Promise<unknown>;
   onClose: () => void;
 }) {
   const [newTitle, setNewTitle] = useState('');
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  /* The management list is server-paged and searchable. Unlike the graph's
+     active set, it also shows groups whose tasks were all archived — that's
+     the place to spot and clean them up. */
+  const [q, setQ] = useState('');
+  const [items, setItems] = useState<TaskGroup[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  // Mutations (create/rename/delete) bump this to refetch the current search.
+  const [refresh, setRefresh] = useState(0);
+
+  useEffect(() => {
+    if (projectId == null) return;
+    let cancelled = false;
+    // Debounce typing; fetch instantly when the search is cleared or on refresh.
+    const timer = window.setTimeout(() => {
+      api.getGroups(projectId, 0, GROUP_PAGE_SIZE, q.trim() || undefined)
+        .then((res) => {
+          if (cancelled) return;
+          setItems(res.items);
+          setTotal(res.total);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setItems([]);
+          setTotal(0);
+        });
+    }, q.trim() ? 250 : 0);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [projectId, q, refresh]);
+
+  const refetch = () => setRefresh((n) => n + 1);
+
+  async function loadMore() {
+    if (projectId == null || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = Math.floor(items.length / GROUP_PAGE_SIZE);
+      const res = await api.getGroups(projectId, nextPage, GROUP_PAGE_SIZE, q.trim() || undefined);
+      setItems((prev) => {
+        const seen = new Set(prev.map((g) => g.id));
+        return [...prev, ...res.items.filter((g) => !seen.has(g.id))];
+      });
+      setTotal(res.total);
+    } catch {
+      // Non-fatal: the list simply keeps what it has.
+    }
+    setLoadingMore(false);
+  }
 
   async function submitNew(e: FormEvent) {
     e.preventDefault();
@@ -1373,6 +1419,7 @@ function GroupsPanel({ groups, memberCounts, folded, onFold, onUnfold, onCreate,
     setBusy(true);
     if (await onCreate(t)) setNewTitle('');
     setBusy(false);
+    refetch();
   }
 
   async function submitRename(gid: number) {
@@ -1382,24 +1429,32 @@ function GroupsPanel({ groups, memberCounts, folded, onFold, onUnfold, onCreate,
       setBusy(true);
       await onRename(gid, t);
       setBusy(false);
+      refetch();
     }
   }
 
   return (
     <div className="gpanel">
       <div className="gpanel__head">
-        <span className="gpanel__title"><Icon name="folder" /> Groups</span>
+        <span className="gpanel__title"><Icon name="folder" /> Groups{total > 0 ? ` (${total})` : ''}</span>
         <button className="iconbtn iconbtn--sm" title="Close" onClick={onClose}><Icon name="x" /></button>
       </div>
+      <input
+        className="input input--sm gpanel__search"
+        placeholder="Search groups…"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
       <div className="gpanel__list">
-        {groups.length === 0 && (
+        {items.length === 0 && (
           <div className="muted small gpanel__empty">
-            No groups yet. Create one and pick it in a task’s panel — then fold the
-            whole group into a single node here.
+            {q.trim()
+              ? 'No groups match the search.'
+              : 'No groups yet. Create one and pick it in a task’s panel — then fold the whole group into a single node here.'}
           </div>
         )}
-        {groups.map((g) => {
-          const count = memberCounts.get(g.id) ?? 0;
+        {items.map((g) => {
+          const count = g.activeTaskCount ?? 0;
           const isFolded = folded.has(g.id);
           return (
             <div key={g.id} className="gpanel__row">
@@ -1424,7 +1479,7 @@ function GroupsPanel({ groups, memberCounts, folded, onFold, onUnfold, onCreate,
               <button
                 className={`btn btn--ghost btn--sm ${isFolded ? 'is-active' : ''}`}
                 disabled={count === 0}
-                title={count === 0 ? 'No tasks in this group yet' : isFolded ? 'Expand back into tasks' : 'Fold into one node'}
+                title={count === 0 ? 'No active tasks in this group' : isFolded ? 'Expand back into tasks' : 'Fold into one node'}
                 onClick={() => (isFolded ? onUnfold(g.id) : onFold(g.id))}
               >
                 {isFolded ? 'Unfold' : 'Fold'}
@@ -1436,12 +1491,21 @@ function GroupsPanel({ groups, memberCounts, folded, onFold, onUnfold, onCreate,
               >
                 <Icon name="edit" />
               </button>
-              <button className="iconbtn iconbtn--sm iconbtn--danger" title="Delete group" onClick={() => onDelete(g)}>
+              <button
+                className="iconbtn iconbtn--sm iconbtn--danger"
+                title="Delete group"
+                onClick={() => void Promise.resolve(onDelete(g)).then(refetch)}
+              >
                 <Icon name="trash" />
               </button>
             </div>
           );
         })}
+        {items.length < total && (
+          <button className="btn btn--ghost btn--sm gpanel__more" disabled={loadingMore} onClick={() => void loadMore()}>
+            {loadingMore ? 'Loading…' : `Load more (${items.length} of ${total})`}
+          </button>
+        )}
       </div>
       <form className="gpanel__new" onSubmit={submitNew}>
         <input
@@ -1558,12 +1622,23 @@ const formatArchiveDate = (iso: string) => {
     : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
-function HistoryPanel({ archives, onView, onRestore, onClose }: {
+function HistoryPanel({ archives, total, onLoadMore, onView, onRestore, onClose }: {
   archives: GraphArchive[];
+  total: number;
+  onLoadMore: () => Promise<void>;
   onView: (a: GraphArchive) => void;
   onRestore: (a: GraphArchive) => void;
   onClose: () => void;
 }) {
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  async function loadMore() {
+    if (loadingMore) return;
+    setLoadingMore(true);
+    await onLoadMore();
+    setLoadingMore(false);
+  }
+
   return (
     <div className="gpanel">
       <div className="gpanel__head">
@@ -1580,7 +1655,10 @@ function HistoryPanel({ archives, onView, onRestore, onClose }: {
         {archives.map((a) => (
           <div key={a.id} className="gpanel__row">
             <span className="gpanel__name" title={a.title}>
-              {a.title} <span className="muted">· {formatArchiveDate(a.archivedAt)}</span>
+              {a.title}{' '}
+              <span className="muted">
+                · {formatArchiveDate(a.archivedAt)} · {a.taskCount} task{a.taskCount === 1 ? '' : 's'}
+              </span>
             </span>
             <button className="btn btn--ghost btn--sm" title="Open a read-only view of this branch" onClick={() => onView(a)}>
               View
@@ -1590,6 +1668,11 @@ function HistoryPanel({ archives, onView, onRestore, onClose }: {
             </button>
           </div>
         ))}
+        {archives.length < total && (
+          <button className="btn btn--ghost btn--sm gpanel__more" disabled={loadingMore} onClick={() => void loadMore()}>
+            {loadingMore ? 'Loading…' : `Load more (${archives.length} of ${total})`}
+          </button>
+        )}
       </div>
     </div>
   );

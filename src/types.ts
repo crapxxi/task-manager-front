@@ -36,11 +36,24 @@ export interface ProjectRequest {
    Task groups (named super-nodes on the graph)
    ============================================================ */
 
-/** GET /api/v1/groups/project/{projectId} → element; also returned by create/update. */
+/** One page of a paginated list — `total` counts ALL matching rows, not the page. */
+export interface PageResponse<T> {
+  items: T[];
+  page: number;
+  size: number;
+  total: number;
+}
+
+/**
+ * Element of GET /api/v1/groups/project/{projectId} (paged) and
+ * /active (plain array); also returned by create/update.
+ */
 export interface TaskGroup {
   id: number;
   projectId: number;
   title: string;
+  /** Tasks currently on the active graph (excludes archived/deleted). 0 outside list endpoints. */
+  activeTaskCount: number;
 }
 
 /** Body for POST/PUT /api/v1/groups. */
@@ -120,13 +133,15 @@ export interface TaskGraph {
    Graph archives — history of completed branches
    ============================================================ */
 
-/** GET /api/v1/archives/{projectId} → element; one archive = one archived branch set. */
+/** Element of GET /api/v1/archives/{projectId} (paged); one archive = one archived branch set. */
 export interface GraphArchive {
   id: number;
   projectId: number;
   title: string;
   /** UTC instant ("2026-07-15T12:34:56Z"). */
   archivedAt: string;
+  /** Tasks inside the archive (deleted ones excluded). */
+  taskCount: number;
 }
 
 /** The backend's ErrorResponse body. */

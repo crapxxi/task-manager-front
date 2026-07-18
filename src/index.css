@@ -1393,6 +1393,8 @@ h1, h2, h3, p { margin: 0; }
   border-top: 1px solid var(--border);
 }
 .gpanel__new .input { flex: 1; min-width: 0; }
+.gpanel__search { margin: 8px 12px 0; width: calc(100% - 24px); }
+.gpanel__more { margin: 4px 6px 2px; align-self: center; }
 
 .btn.is-active { border-color: var(--primary); color: var(--primary); }
 

@@ -307,8 +307,12 @@ interface TasksCtx {
   assignToGroup: (groupId: number, taskIds: number[]) => Promise<boolean>;
   /** Create a group and put the given tasks in it — one flow, one toast. */
   groupTasks: (title: string, taskIds: number[]) => Promise<boolean>;
-  /** History of archived branches for the current project (newest first). */
+  /** First page(s) of archived-branch history, newest first (server order). */
   archives: GraphArchive[];
+  /** Total archives on the server — drives the History badge and “Load more”. */
+  archivesTotal: number;
+  /** Append the next history page to `archives`. */
+  loadMoreArchives: () => Promise<void>;
   /** Archive a completed branch: the root task plus everything it unlocks. */
   archiveBranch: (rootId: number, title: string | null) => Promise<boolean>;
   /** Bring an archived branch back into the active graph. */
@@ -318,6 +322,9 @@ interface TasksCtx {
 }
 const TasksContext = createContext<TasksCtx | null>(null);
 
+/** Server page size for history; backend caps size at 100. */
+const ARCHIVE_PAGE_SIZE = 20;
+
 export function TasksProvider({ children }: { children: ReactNode }) {
   const { push } = useToast();
   const { currentId } = useProjects();
@@ -326,6 +333,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   const [edges, setEdges] = useState<GraphEdge[]>([]);
   const [groups, setGroups] = useState<TaskGroup[]>([]);
   const [archives, setArchives] = useState<GraphArchive[]>([]);
+  const [archivesTotal, setArchivesTotal] = useState(0);
   const [influenceById, setInfluenceById] = useState<Map<number, number>>(new Map());
 
   const reload = useCallback(async () => {
@@ -334,19 +342,23 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       setEdges([]);
       setGroups([]);
       setArchives([]);
+      setArchivesTotal(0);
       setInfluenceById(new Map());
       setStatus('ready');
       return;
     }
     try {
       // The task list carries descriptions; the graph carries the edges.
-      const [list, graph, groupList, archiveList] = await Promise.all([
+      // Only active groups load eagerly; the full (paged) group list belongs
+      // to the management panel. History loads its first page — the badge
+      // reads `total`, the panel appends further pages on demand.
+      const [list, graph, groupList, archivePage] = await Promise.all([
         api.getTasks(currentId),
         api.getGraph(currentId),
         // Groups and archives are enhancements — a backend without them
         // shouldn't take the whole board down.
-        api.getGroups(currentId).catch(() => []),
-        api.getArchives(currentId).catch(() => []),
+        api.getActiveGroups(currentId).catch(() => []),
+        api.getArchives(currentId, 0, ARCHIVE_PAGE_SIZE).catch(() => null),
       ]);
       // The list endpoint returns archived tasks too — only active ones belong
       // on the board; archived branches live behind the graph's History panel.
@@ -366,7 +378,8 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       })));
       setEdges(graph.edges);
       setGroups(groupList);
-      setArchives([...archiveList].sort((a, b) => b.archivedAt.localeCompare(a.archivedAt)));
+      setArchives(archivePage?.items ?? []);
+      setArchivesTotal(archivePage?.total ?? 0);
       setInfluenceById(new Map(graph.nodes.map((n) => [n.id, n.influence ?? 0])));
       setStatus('ready');
     } catch (err) {
@@ -529,6 +542,23 @@ export function TasksProvider({ children }: { children: ReactNode }) {
     return run(() => api.updateTask(taskId, body), groupId == null ? 'Removed from group' : 'Moved to group');
   }, [run, byId, currentId]);
 
+  // Appends the next page; a page already carries archives created since the
+  // first load, so rows are de-duplicated by id before appending.
+  const loadMoreArchives = useCallback(async () => {
+    if (currentId == null) return;
+    try {
+      const nextPage = Math.floor(archives.length / ARCHIVE_PAGE_SIZE);
+      const res = await api.getArchives(currentId, nextPage, ARCHIVE_PAGE_SIZE);
+      setArchives((prev) => {
+        const seen = new Set(prev.map((a) => a.id));
+        return [...prev, ...res.items.filter((a) => !seen.has(a.id))];
+      });
+      setArchivesTotal(res.total);
+    } catch (err) {
+      push((err as Error).message, 'error');
+    }
+  }, [currentId, archives.length, push]);
+
   const archiveBranch = useCallback((rootId: number, title: string | null) => {
     if (currentId == null) return Promise.resolve(false);
     return run(() => api.archiveBranches(currentId, [rootId], title), 'Branch archived');
@@ -548,13 +578,13 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       strictDescendants, influenceById,
       create, update, remove, bind, unbind, changeBindType, toggle,
       createGroup, renameGroup, removeGroup, setTaskGroup, assignToGroup, groupTasks,
-      archives, archiveBranch, restoreArchive, fetchArchiveGraph,
+      archives, archivesTotal, loadMoreArchives, archiveBranch, restoreArchive, fetchArchiveGraph,
     }),
     [status, tasks, byId, edges, groups, reload, prerequisitesOf, dependentsOf, descendants,
       strictDescendants, influenceById,
       create, update, remove, bind, unbind, changeBindType, toggle,
       createGroup, renameGroup, removeGroup, setTaskGroup, assignToGroup, groupTasks,
-      archives, archiveBranch, restoreArchive, fetchArchiveGraph],
+      archives, archivesTotal, loadMoreArchives, archiveBranch, restoreArchive, fetchArchiveGraph],
   );
   return <TasksContext.Provider value={value}>{children}</TasksContext.Provider>;
 }

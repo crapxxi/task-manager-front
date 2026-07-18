@@ -3,6 +3,7 @@ import type {
   DependencyType,
   GraphArchive,
   LoginRequest,
+  PageResponse,
   Project,
   ProjectRequest,
   RegisterRequest,
@@ -112,7 +113,13 @@ export const api = {
     req<TaskResponse[]>('PATCH', `/api/v1/tasks/${taskId}/dependency-update/${parentId}`, { query: { type } }),
 
   // task groups (named super-nodes)
-  getGroups: (projectId: number) => req<TaskGroup[]>('GET', `/api/v1/groups/project/${projectId}`),
+  // Paged management list — includes groups whose tasks were all archived.
+  getGroups: (projectId: number, page = 0, size = 20, q?: string) =>
+    req<PageResponse<TaskGroup>>('GET', `/api/v1/groups/project/${projectId}`, {
+      query: q ? { page, size, q } : { page, size },
+    }),
+  // Groups with ≥1 task on the active graph — feeds folds, pickers, roadmap lanes.
+  getActiveGroups: (projectId: number) => req<TaskGroup[]>('GET', `/api/v1/groups/project/${projectId}/active`),
   createGroup: (body: TaskGroupRequest) => req<TaskGroup>('POST', '/api/v1/groups', { body }),
   updateGroup: (id: number, body: TaskGroupRequest) => req<TaskGroup>('PUT', `/api/v1/groups/${id}`, { body }),
   deleteGroup: (id: number) => req<void>('DELETE', `/api/v1/groups/${id}`),
@@ -125,7 +132,11 @@ export const api = {
   // graph archives (history of completed branches)
   archiveBranches: (projectId: number, rootTaskIds: number[], title: string | null) =>
     req<GraphArchive>('POST', `/api/v1/archives/${projectId}`, { body: { rootTaskIds, title } }),
-  getArchives: (projectId: number) => req<GraphArchive[]>('GET', `/api/v1/archives/${projectId}`),
+  // Paged history, newest first (server-side order).
+  getArchives: (projectId: number, page = 0, size = 20, q?: string) =>
+    req<PageResponse<GraphArchive>>('GET', `/api/v1/archives/${projectId}`, {
+      query: q ? { page, size, q } : { page, size },
+    }),
   getArchiveGraph: (projectId: number, archiveId: number) =>
     req<TaskGraph>('GET', `/api/v1/archives/${projectId}/${archiveId}`),
   restoreArchive: (projectId: number, archiveId: number) =>
