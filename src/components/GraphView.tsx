@@ -29,11 +29,12 @@ import {
   type DependencyType,
   type GraphArchive,
   type GraphEdge,
+  type GraphNode,
   type Task,
   type TaskGraph,
   type TaskGroup,
 } from '../types';
-import { ConnectionError, EmptyState, LoadingState } from './ui';
+import { ConnectionError, EmptyState, LoadingState, StatusDot } from './ui';
 
 interface Transform { tx: number; ty: number; k: number }
 
@@ -1114,6 +1115,8 @@ export function GraphView() {
   );
 }
 
+/** One slim row: pick an existing group to assign right away, or flip into a
+    "name the new group" input. Kept tiny so it doesn't wall off the graph. */
 function SelectBar({ count, groups, busyDisabled, onAssign, onCreate, onDone }: {
   count: number;
   groups: { id: number; title: string }[];
@@ -1122,64 +1125,68 @@ function SelectBar({ count, groups, busyDisabled, onAssign, onCreate, onDone }: 
   onCreate: (title: string) => Promise<void>;
   onDone: () => void;
 }) {
-  const [groupId, setGroupId] = useState<'' | number>('');
+  const [creating, setCreating] = useState(groups.length === 0);
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
   const disabled = busyDisabled || busy;
 
+  async function create() {
+    if (disabled || !title.trim()) return;
+    setBusy(true);
+    await onCreate(title.trim());
+    setBusy(false);
+  }
+
   return (
     <div className="gselbar">
       <span className="gselbar__count">{count} picked</span>
-      {groups.length > 0 && (
-        <span className="gselbar__pair">
-          <select
-            className="input input--sm"
-            value={groupId}
-            onChange={(e) => setGroupId(e.target.value === '' ? '' : Number(e.target.value))}
-          >
-            <option value="">Existing group…</option>
-            {groups.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
-          </select>
-          <button
-            className="btn btn--sm"
-            disabled={disabled || groupId === ''}
-            onClick={async () => {
-              if (groupId === '') return;
-              setBusy(true);
-              await onAssign(groupId);
-              setBusy(false);
-            }}
-          >
-            Add
-          </button>
-        </span>
-      )}
-      <span className="gselbar__pair">
-        <input
-          className="input input--sm"
-          placeholder="New group from picked…"
-          maxLength={255}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== 'Enter' || !title.trim() || disabled) return;
-            e.preventDefault();
+      {!creating ? (
+        <select
+          className="input input--sm gselbar__pick"
+          value=""
+          disabled={disabled}
+          title={busyDisabled ? 'Tap tasks on the graph first' : 'Put the picked tasks into a group'}
+          onChange={async (e) => {
+            const v = e.target.value;
+            if (v === 'new') { setCreating(true); return; }
+            if (v === '') return;
             setBusy(true);
-            void onCreate(title.trim()).finally(() => setBusy(false));
-          }}
-        />
-        <button
-          className="btn btn--sm"
-          disabled={disabled || !title.trim()}
-          onClick={async () => {
-            setBusy(true);
-            await onCreate(title.trim());
+            await onAssign(Number(v));
             setBusy(false);
           }}
         >
-          <Icon name="plus" />Create
-        </button>
-      </span>
+          <option value="" disabled>Group…</option>
+          {groups.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
+          <option value="new">＋ New group…</option>
+        </select>
+      ) : (
+        <>
+          <input
+            className="input input--sm gselbar__pick"
+            autoFocus
+            placeholder="Group name…"
+            maxLength={255}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return;
+              e.preventDefault();
+              void create();
+            }}
+          />
+          <button className="btn btn--sm" disabled={disabled || !title.trim()} onClick={() => void create()}>
+            Create
+          </button>
+          {groups.length > 0 && (
+            <button
+              className="btn btn--ghost btn--sm"
+              onClick={() => { setCreating(false); setTitle(''); }}
+            >
+              Cancel
+            </button>
+          )}
+        </>
+      )}
       <button className="iconbtn" title="Done" onClick={onDone}><Icon name="x" /></button>
     </div>
   );
@@ -1724,6 +1731,9 @@ type ViewerState =
   | { kind: 'error'; message: string }
   | { kind: 'ok'; graph: TaskGraph };
 
+/** Visible window of the archive graph, in graph coordinates. */
+interface ViewerBox { x: number; y: number; w: number; h: number }
+
 /** Read-only look at one archive's graph, laid out like the live board. */
 function ArchiveViewer({ archive, fetchGraph, onClose }: {
   archive: GraphArchive;
@@ -1741,6 +1751,17 @@ function ArchiveViewer({ archive, fetchGraph, onClose }: {
     return () => { alive = false; };
   }, [archive.id, fetchGraph]);
 
+  const [picked, setPicked] = useState<GraphNode | null>(null);
+  /* Pan/zoom works on the viewBox itself: `vb` is the visible window in graph
+     coordinates, null = the fitted view. */
+  const [vb, setVb] = useState<ViewerBox | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const pointers = useRef(new Map<number, XY>());
+  const pinch = useRef<{ startDist: number; startBox: ViewerBox } | null>(null);
+  const drag = useRef<{ sx: number; sy: number; start: ViewerBox; moved: boolean } | null>(null);
+
+  useEffect(() => { setVb(null); setPicked(null); }, [archive.id]);
+
   const layout = useMemo(
     () => state.kind === 'ok'
       ? computeLayout(state.graph.nodes.map((n) => ({ id: n.id, title: n.title })), state.graph.edges)
@@ -1748,9 +1769,8 @@ function ArchiveViewer({ archive, fetchGraph, onClose }: {
     [state],
   );
 
-  // The graph is static, so a fitted viewBox replaces pan/zoom machinery.
-  const viewBox = useMemo(() => {
-    if (!layout || layout.size === 0) return '0 0 100 100';
+  const base = useMemo<ViewerBox | null>(() => {
+    if (!layout || layout.size === 0) return null;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const p of layout.values()) {
       minX = Math.min(minX, p.x - NODE_W / 2);
@@ -1759,8 +1779,101 @@ function ArchiveViewer({ archive, fetchGraph, onClose }: {
       maxY = Math.max(maxY, p.y + NODE_H / 2);
     }
     const pad = 32;
-    return `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`;
+    return { x: minX - pad, y: minY - pad, w: maxX - minX + pad * 2, h: maxY - minY + pad * 2 };
   }, [layout]);
+
+  const box = vb ?? base;
+
+  const applyZoom = useCallback((b: ViewerBox, factor: number): ViewerBox => {
+    if (!base) return b;
+    const w = Math.min(Math.max(b.w / factor, base.w / 8), base.w * 3);
+    const h = b.h * (w / b.w);
+    return { x: b.x + (b.w - w) / 2, y: b.y + (b.h - h) / 2, w, h };
+  }, [base]);
+
+  const zoomBy = useCallback((factor: number) => {
+    setVb((prev) => {
+      const b = prev ?? base;
+      return b ? applyZoom(b, factor) : prev;
+    });
+  }, [base, applyZoom]);
+
+  // Wheel zoom needs a non-passive listener to keep the page from scrolling.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      zoomBy(e.deltaY < 0 ? 1.2 : 1 / 1.2);
+    };
+    svg.addEventListener('wheel', onWheel, { passive: false });
+    return () => svg.removeEventListener('wheel', onWheel);
+  }, [zoomBy, state.kind]);
+
+  /** Graph units per screen pixel for the current view ("meet" scaling). */
+  function unitsPerPx(b: ViewerBox) {
+    const r = svgRef.current?.getBoundingClientRect();
+    if (!r || !r.width || !r.height) return 1;
+    return Math.max(b.w / r.width, b.h / r.height);
+  }
+
+  function onPointerDown(e: RPointerEvent<SVGSVGElement>) {
+    if (!box) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size === 2) {
+      const [a, b] = [...pointers.current.values()];
+      pinch.current = { startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1, startBox: box };
+      drag.current = null;
+      return;
+    }
+    drag.current = { sx: e.clientX, sy: e.clientY, start: box, moved: false };
+  }
+
+  function onPointerMove(e: RPointerEvent<SVGSVGElement>) {
+    if (!pointers.current.has(e.pointerId)) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pinch.current && pointers.current.size >= 2) {
+      const [a, b] = [...pointers.current.values()];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      if (dist > 0) setVb(applyZoom(pinch.current.startBox, dist / pinch.current.startDist));
+      return;
+    }
+
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.sx;
+    const dy = e.clientY - d.sy;
+    // Same tap slop as the main graph: fingers jitter, mice don't.
+    const slop = e.pointerType === 'mouse' ? 3 : 12;
+    if (Math.abs(dx) + Math.abs(dy) > slop) d.moved = true;
+    if (!d.moved) return;
+    const upp = unitsPerPx(d.start);
+    setVb({ ...d.start, x: d.start.x - dx * upp, y: d.start.y - dy * upp });
+  }
+
+  function onPointerUp(e: RPointerEvent<SVGSVGElement>) {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinch.current = null;
+
+    const d = drag.current;
+    if (d && !d.moved && state.kind === 'ok') {
+      // Pointer capture pins e.target to the svg — hit-test manually.
+      const el = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-anode]');
+      const id = el ? Number(el.getAttribute('data-anode')) : null;
+      setPicked(id != null ? state.graph.nodes.find((n) => n.id === id) ?? null : null);
+    }
+    drag.current = null;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+  }
+
+  function onPointerCancel(e: RPointerEvent<SVGSVGElement>) {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinch.current = null;
+    drag.current = null;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+  }
 
   return (
     <div className="modal-root">
@@ -1778,8 +1891,17 @@ function ArchiveViewer({ archive, fetchGraph, onClose }: {
           <div className="archview__canvas">
             {state.kind === 'loading' && <div className="archview__center muted">Loading…</div>}
             {state.kind === 'error' && <div className="archview__center danger">{state.message}</div>}
-            {state.kind === 'ok' && layout && (
-              <svg className="archview__svg" viewBox={viewBox} preserveAspectRatio="xMidYMid meet">
+            {state.kind === 'ok' && layout && box && (
+              <svg
+                ref={svgRef}
+                className="archview__svg"
+                viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
+                preserveAspectRatio="xMidYMid meet"
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerCancel={onPointerCancel}
+              >
                 <defs>
                   <marker id="arrow-arch" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
                     <path d="M0 0 L10 5 L0 10 z" fill="context-stroke" />
@@ -1805,7 +1927,12 @@ function ArchiveViewer({ archive, fetchGraph, onClose }: {
                     const p = layout.get(n.id);
                     if (!p) return null;
                     return (
-                      <g key={n.id} className={`gnode gnode--${n.status.toLowerCase()}`} transform={`translate(${p.x},${p.y})`}>
+                      <g
+                        key={n.id}
+                        data-anode={n.id}
+                        className={`gnode gnode--${n.status.toLowerCase()} ${picked?.id === n.id ? 'is-selected' : ''}`}
+                        transform={`translate(${p.x},${p.y})`}
+                      >
                         <rect className="gnode__box" x={-NODE_W / 2} y={-NODE_H / 2} width={NODE_W} height={NODE_H} rx={12} />
                         <circle className="gnode__dot" cx={-NODE_W / 2 + 20} cy={-10} r={4} />
                         <text className="gnode__title" x={-NODE_W / 2 + 32} y={-6}>{truncate(n.title, 20)}</text>
@@ -1817,6 +1944,23 @@ function ArchiveViewer({ archive, fetchGraph, onClose }: {
                   })}
                 </g>
               </svg>
+            )}
+            {state.kind === 'ok' && (
+              <div className="archview__tools">
+                <button className="iconbtn" title="Zoom in" onClick={() => zoomBy(1.25)}><Icon name="zoomin" /></button>
+                <button className="iconbtn" title="Zoom out" onClick={() => zoomBy(1 / 1.25)}><Icon name="zoomout" /></button>
+                <button className="iconbtn" title="Fit to view" onClick={() => setVb(null)}><Icon name="fit" /></button>
+              </div>
+            )}
+            {picked && (
+              <div className="archview__info">
+                <StatusDot status={picked.status} />
+                <div className="archview__info-text">
+                  <div className="archview__info-title">{picked.title}</div>
+                  <div className="muted small">{picked.durationHours}h · {STATUS_LABEL[picked.status]}</div>
+                </div>
+                <button className="iconbtn" title="Close" onClick={() => setPicked(null)}><Icon name="x" /></button>
+              </div>
             )}
           </div>
         </div>
