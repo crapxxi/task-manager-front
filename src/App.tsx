@@ -16,6 +16,7 @@ import { StatsBar } from './components/StatsBar';
 import { BoardView } from './components/BoardView';
 import { GraphView } from './components/GraphView';
 import { PlanView } from './components/PlanView';
+import { RoadmapView } from './components/RoadmapView';
 import { TaskDrawer } from './components/TaskDrawer';
 import { ModalHost } from './components/Modals';
 import { Toaster } from './components/Toaster';
@@ -48,6 +49,7 @@ function Shell() {
       {view === 'board' && <BoardView />}
       {view === 'graph' && <GraphView />}
       {view === 'plan' && <PlanView />}
+      {view === 'roadmap' && <RoadmapView />}
     </>
   );
 

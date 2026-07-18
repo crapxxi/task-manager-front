@@ -7,6 +7,7 @@ import {
   useState,
   type FormEvent,
   type PointerEvent as RPointerEvent,
+  type RefObject,
 } from 'react';
 import { Icon } from '../icons';
 import { useAuth, useProjects, useTasks, useUI } from '../state';
@@ -14,6 +15,7 @@ import {
   computeCollapse,
   computeLayout,
   edgePath,
+  groupColor,
   NODE_H,
   NODE_W,
   type LayoutLink,
@@ -56,9 +58,6 @@ type Popover =
 /** Synthetic node for a folded group. Lives at id = -groupId so it never
     collides with task ids in the shared positions map. */
 interface GroupNode { id: number; gid: number; title: string; count: number }
-
-const GROUP_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#e11d48'];
-const groupColor = (gid: number) => GROUP_COLORS[Math.abs(gid) % GROUP_COLORS.length];
 
 const truncate = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 
@@ -110,7 +109,7 @@ function ghostPath(a: XY, x: number, y: number): string {
 
 export function GraphView() {
   const {
-    status, tasks, byId, edges, groups, descendants,
+    status, tasks, byId, edges, groups, descendants, strictDescendants, influenceById,
     bind, unbind, changeBindType, createGroup, renameGroup, removeGroup, assignToGroup, groupTasks,
     archives, archiveBranch, restoreArchive, fetchArchiveGraph,
   } = useTasks();
@@ -138,6 +137,9 @@ export function GraphView() {
   // action bar turns the picked set into a group in one go.
   const [selectMode, setSelectMode] = useState(false);
   const [picked, setPicked] = useState<Set<number>>(new Set());
+  // Influence overlay: tints nodes by how much they unlock and, on hover/select,
+  // lights up the downstream cone a task drives.
+  const [influenceMode, setInfluenceMode] = useState(false);
 
   /* Branch focus: when a root task is chosen, the board narrows down to that
      task plus everything it unlocks. Cleared on project switch and when the
@@ -360,6 +362,14 @@ export function GraphView() {
     const k = Math.max(0.25, Math.min((W - pad * 2) / (maxX - minX), (H - pad * 2) / (maxY - minY), 1.5));
     setTf({ k, tx: W / 2 - ((minX + maxX) / 2) * k, ty: H / 2 - ((minY + maxY) / 2) * k });
   }, [positions]);
+
+  // Center the main view on a world-space point — used by the minimap to jump around.
+  const centerOn = useCallback((wx: number, wy: number) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const r = svg.getBoundingClientRect();
+    setTf((t) => ({ ...t, tx: (r.width || 800) / 2 - wx * t.k, ty: (r.height || 520) / 2 - wy * t.k }));
+  }, []);
 
   useLayoutEffect(() => {
     if (needFit.current && positions.size) { needFit.current = false; fitToView(); }
@@ -693,6 +703,38 @@ export function GraphView() {
     return set;
   }, [scopedEdges, focusId]);
 
+  // Influence overlay: normalize the heat by the busiest visible node, and (when
+  // a node is focused) resolve the downstream cone it drives so we can light it up.
+  const maxInfluence = useMemo(
+    () => visibleTasks.reduce((m, t) => Math.max(m, influenceById.get(t.id) ?? 0), 0),
+    [visibleTasks, influenceById],
+  );
+
+  // Colour every drawn node for the minimap dots: status tint for tasks, the
+  // group's own hue for folded super-nodes.
+  const nodeColor = useMemo(() => {
+    const statusVar: Record<string, string> = {
+      TODO: 'var(--todo)', IN_PROGRESS: 'var(--progress)',
+      COMPLETED: 'var(--done)', EXPIRED: 'var(--expired)',
+    };
+    const m = new Map<number, string>();
+    for (const t of visibleTasks) m.set(t.id, t.isBlocked ? 'var(--blocked)' : statusVar[t.status] ?? 'var(--todo)');
+    for (const g of groupNodes) m.set(g.id, groupColor(g.gid));
+    return m;
+  }, [visibleTasks, groupNodes]);
+  const influenceCone = useMemo(
+    () => (influenceMode && focusId != null ? strictDescendants(focusId) : null),
+    [influenceMode, focusId, strictDescendants],
+  );
+  const coneWithRoot = useMemo(
+    () => (influenceCone != null && focusId != null ? new Set([focusId, ...influenceCone]) : null),
+    [influenceCone, focusId],
+  );
+  // The cone borrows the root's accent: green depth behind finished work, rust ahead of open work.
+  const coneColor = coneWithRoot != null && focusId != null
+    ? (byId.get(focusId)?.status === 'COMPLETED' ? 'var(--inf-done)' : 'var(--inf-open)')
+    : null;
+
   const overlay =
     status === 'loading' ? <LoadingState /> :
     status === 'error' ? <ConnectionError /> :
@@ -758,6 +800,15 @@ export function GraphView() {
               {collapsedCount} hidden<span className="gbtn__label"> — expand</span>
             </button>
           )}
+          <button
+            className={`btn btn--ghost btn--sm ${influenceMode ? 'is-active' : ''}`}
+            title="Influence overlay — shade tasks by how much they unlock; hover one to light up its downstream cone"
+            aria-pressed={influenceMode}
+            onClick={() => setInfluenceMode((v) => !v)}
+          >
+            <Icon name="influence" />
+            <span className="gbtn__label">Influence</span>
+          </button>
           <button
             className={`btn btn--ghost btn--sm ${selectMode ? 'is-active' : ''}`}
             title="Pick several tasks, then group them in one go"
@@ -832,12 +883,18 @@ export function GraphView() {
                     </path>
                   );
                 }
-                const active = focusId != null && (edge.sourceId === focusId || edge.targetId === focusId);
-                const dim = (focusId != null && !active) || !!connect;
+                const inCone = coneWithRoot != null
+                  && edge.type === 'STRICT_PREREQUISITE'
+                  && coneWithRoot.has(edge.sourceId) && coneWithRoot.has(edge.targetId);
+                const active = coneWithRoot != null
+                  ? inCone
+                  : focusId != null && (edge.sourceId === focusId || edge.targetId === focusId);
+                const dim = coneWithRoot != null ? !inCone : ((focusId != null && !active) || !!connect);
                 return (
                   <g key={edge.id}>
                     <path
-                      className={`edge edge--${edge.type === 'OPTIONAL_LINK' ? 'optional' : 'strict'} ${active ? 'is-active' : ''} ${dim ? 'is-dim' : ''}`}
+                      className={`edge edge--${edge.type === 'OPTIONAL_LINK' ? 'optional' : 'strict'} ${active ? 'is-active' : ''} ${inCone ? 'edge--influence' : ''} ${dim ? 'is-dim' : ''}`}
+                      style={inCone && coneColor ? { stroke: coneColor } : undefined}
                       d={d}
                       markerEnd="url(#arrow)"
                     />
@@ -864,9 +921,13 @@ export function GraphView() {
                 const isTarget = connect?.targetId === t.id;
                 const linkable = connect ? validTargets.current.has(t.id) : false;
                 const selected = focusId === t.id || isSource;
+                const inCone = coneWithRoot != null && coneWithRoot.has(t.id);
                 const dim = connect
                   ? !isSource && !linkable
-                  : focusId != null && focusId !== t.id && !neighbors.has(t.id);
+                  : coneWithRoot != null
+                    ? !inCone
+                    : focusId != null && focusId !== t.id && !neighbors.has(t.id);
+                const influence = influenceById.get(t.id) ?? 0;
                 return (
                   <TaskNode
                     key={t.id}
@@ -883,6 +944,10 @@ export function GraphView() {
                     selectable={selectMode}
                     picked={picked.has(t.id)}
                     isBranchRoot={branchRoot === t.id}
+                    influenceMode={influenceMode}
+                    influence={influence}
+                    heat={maxInfluence > 0 ? influence / maxInfluence : 0}
+                    coneRoot={influenceCone != null && focusId === t.id}
                     onHover={setHoverId}
                   />
                 );
@@ -1005,6 +1070,10 @@ export function GraphView() {
           />
         )}
 
+        {!overlay && positions.size > 1 && (
+          <Minimap positions={positions} colorById={nodeColor} tf={tf} svgRef={svgRef} onCenter={centerOn} />
+        )}
+
         {overlay && <div className="graph-overlay">{overlay}</div>}
       </div>
 
@@ -1093,14 +1162,17 @@ function SelectBar({ count, groups, busyDisabled, onAssign, onCreate, onDone }: 
   );
 }
 
-function TaskNode({ task, p, selected, dim, highlight, isCollapsed, hiddenCount, childCount, selectable, picked, isBranchRoot, onHover }: {
+function TaskNode({ task, p, selected, dim, highlight, isCollapsed, hiddenCount, childCount, selectable, picked, isBranchRoot, influenceMode, influence, heat, coneRoot, onHover }: {
   task: Task; p: XY; selected: boolean; dim: boolean; highlight: boolean;
   isCollapsed: boolean; hiddenCount: number; childCount: number;
   selectable: boolean; picked: boolean; isBranchRoot: boolean;
+  influenceMode: boolean; influence: number; heat: number; coneRoot: boolean;
   onHover: (id: number | null) => void;
 }) {
   const badge = isCollapsed ? `+${hiddenCount}` : '−';
   const badgeW = isCollapsed ? Math.max(26, 12 + 7 * badge.length) : 18;
+  // Influence badge width grows with the digit count so it never clips.
+  const infW = 24 + 7 * String(influence).length;
   return (
     <g
       className={[
@@ -1112,6 +1184,12 @@ function TaskNode({ task, p, selected, dim, highlight, isCollapsed, hiddenCount,
         highlight ? 'is-target' : '',
         isCollapsed ? 'gnode--super' : '',
         picked ? 'is-picked' : '',
+        coneRoot ? 'gnode--cone-root' : '',
+        // Influence accent colour: green depth for finished work, rust for open.
+        influenceMode && influence > 0
+          ? (task.status === 'COMPLETED' ? 'gnode--inf-done' : 'gnode--inf-open')
+          : '',
+        influenceMode && influence > 0 && heat >= 0.65 ? 'gnode--hot' : '',
       ].join(' ')}
       data-node={task.id}
       transform={`translate(${p.x},${p.y})`}
@@ -1121,9 +1199,26 @@ function TaskNode({ task, p, selected, dim, highlight, isCollapsed, hiddenCount,
       onPointerEnter={(e) => { if (e.pointerType === 'mouse') onHover(task.id); }}
       onPointerLeave={(e) => { if (e.pointerType === 'mouse') onHover(null); }}
     >
-      <title>{`${task.title} — ${STATUS_LABEL[task.status]}${isCollapsed ? ` (+${hiddenCount} hidden)` : ''}`}</title>
+      <title>{`${task.title} — ${STATUS_LABEL[task.status]}${influenceMode ? ` · unlocks ${influence} task${influence === 1 ? '' : 's'}` : ''}${isCollapsed ? ` (+${hiddenCount} hidden)` : ''}`}</title>
       {isCollapsed && <rect className="gnode__stack" x={-NODE_W / 2 + 5} y={-NODE_H / 2 + 5} width={NODE_W} height={NODE_H} rx={12} />}
       <rect className="gnode__box" x={-NODE_W / 2} y={-NODE_H / 2} width={NODE_W} height={NODE_H} rx={12} />
+      {/* Influence depth: a whisper of tint plus a gauge along the bottom edge —
+          the fuller (and warmer/greener) the strip, the more this task drives. */}
+      {influenceMode && influence > 0 && (
+        <>
+          <rect
+            className="gnode__heat"
+            x={-NODE_W / 2} y={-NODE_H / 2} width={NODE_W} height={NODE_H} rx={12}
+            style={{ opacity: 0.05 + 0.14 * heat }}
+          />
+          <rect className="gnode__heat-track" x={-NODE_W / 2 + 14} y={NODE_H / 2 - 8} width={NODE_W - 28} height={3} rx={1.5} />
+          <rect
+            className="gnode__heat-fill"
+            x={-NODE_W / 2 + 14} y={NODE_H / 2 - 8}
+            width={Math.max(6, (NODE_W - 28) * heat)} height={3} rx={1.5}
+          />
+        </>
+      )}
       {task.groupId != null && (
         <rect className="gnode__gstrip" x={-NODE_W / 2} y={-NODE_H / 2 + 10} width={4} height={NODE_H - 20} rx={2} fill={groupColor(task.groupId)} />
       )}
@@ -1134,6 +1229,19 @@ function TaskNode({ task, p, selected, dim, highlight, isCollapsed, hiddenCount,
         <tspan className={`gnode__imp--${task.importance}`}>{IMPORTANCE_LABEL[task.importance]}</tspan>
         {task.isBlocked && <tspan> · Blocked</tspan>}
       </text>
+
+      {/* Influence badge: a bolt + how many tasks this one drives. */}
+      {influenceMode && influence > 0 && (
+        <g className="gnode__inf" transform={`translate(${NODE_W / 2 - infW / 2 - 8}, ${NODE_H / 2 - 14})`}>
+          <rect className="gnode__inf-bg" x={-infW / 2} y={-8.5} width={infW} height={17} rx={8.5} />
+          <path
+            className="gnode__inf-bolt"
+            transform={`translate(${-infW / 2 + 9}, 0)`}
+            d="M0.9 -4.6 L-2.7 0.5 H-0.7 L-1 4.6 L2.8 -0.7 H0.7 Z"
+          />
+          <text className="gnode__inf-label" x={3.5} y={0.5}>{influence}</text>
+        </g>
+      )}
 
       {/* Pick indicator (select mode): a checkbox in the node's corner. */}
       {selectable && (
@@ -1330,6 +1438,85 @@ function LegendSwatch({ color, label }: { color: string; label: string }) {
       <span className="legend__swatch" style={{ background: color }} />
       {label}
     </span>
+  );
+}
+
+/* ============================================================
+   Minimap — bird's-eye overview + draggable viewport
+   ============================================================ */
+const MINIMAP_W = 176;
+const MINIMAP_H = 118;
+const MINIMAP_PAD = 10;
+
+function Minimap({ positions, colorById, tf, svgRef, onCenter }: {
+  positions: Map<number, XY>;
+  colorById: Map<number, string>;
+  tf: Transform;
+  svgRef: RefObject<SVGSVGElement>;
+  onCenter: (wx: number, wy: number) => void;
+}) {
+  const dragging = useRef(false);
+
+  // World bounds of all drawn nodes, then a uniform fit into the minimap box.
+  const bounds = useMemo(() => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of positions.values()) {
+      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+      minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+    }
+    if (!Number.isFinite(minX)) return null;
+    const worldW = Math.max(maxX - minX, NODE_W);
+    const worldH = Math.max(maxY - minY, NODE_H);
+    const s = Math.min((MINIMAP_W - MINIMAP_PAD * 2) / worldW, (MINIMAP_H - MINIMAP_PAD * 2) / worldH);
+    const ox = (MINIMAP_W - worldW * s) / 2 - minX * s;
+    const oy = (MINIMAP_H - worldH * s) / 2 - minY * s;
+    return { s, ox, oy };
+  }, [positions]);
+
+  if (!bounds) return null;
+  const { s, ox, oy } = bounds;
+  const toMini = (x: number, y: number) => ({ x: ox + x * s, y: oy + y * s });
+
+  // The rectangle of graph currently on screen, mapped into the minimap.
+  const r = svgRef.current?.getBoundingClientRect();
+  const W = r?.width || 800;
+  const H = r?.height || 520;
+  const view = {
+    x: ox + (-tf.tx / tf.k) * s,
+    y: oy + (-tf.ty / tf.k) * s,
+    w: (W / tf.k) * s,
+    h: (H / tf.k) * s,
+  };
+
+  const navigate = (e: RPointerEvent<SVGSVGElement>) => {
+    const box = e.currentTarget.getBoundingClientRect();
+    const mx = e.clientX - box.left;
+    const my = e.clientY - box.top;
+    onCenter((mx - ox) / s, (my - oy) / s);
+  };
+
+  return (
+    <svg
+      className="minimap"
+      width={MINIMAP_W}
+      height={MINIMAP_H}
+      onPointerDown={(e) => { dragging.current = true; e.currentTarget.setPointerCapture(e.pointerId); navigate(e); }}
+      onPointerMove={(e) => { if (dragging.current) navigate(e); }}
+      onPointerUp={(e) => { dragging.current = false; try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ } }}
+      onPointerCancel={() => { dragging.current = false; }}
+    >
+      <rect className="minimap__bg" x={0} y={0} width={MINIMAP_W} height={MINIMAP_H} rx={8} />
+      {[...positions].map(([id, p]) => {
+        const m = toMini(p.x, p.y);
+        return <circle key={id} cx={m.x} cy={m.y} r={id < 0 ? 3.4 : 2.6} fill={colorById.get(id) ?? 'var(--todo)'} />;
+      })}
+      <rect
+        className="minimap__view"
+        x={view.x} y={view.y} width={view.w} height={view.h}
+        // Clamp the visual so a zoomed-out viewport doesn't spill past the frame.
+        style={{ clipPath: `inset(0 round 3px)` }}
+      />
+    </svg>
   );
 }
 

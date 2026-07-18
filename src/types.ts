@@ -99,6 +99,8 @@ export interface GraphNode {
   status: TaskStatus;
   durationHours: number;
   isBlocked: boolean;
+  /** How many tasks (transitively) this one unlocks via strict prerequisites. */
+  influence: number;
 }
 
 /** Graph edges (source = prerequisite, target = dependent). */

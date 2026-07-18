@@ -56,11 +56,33 @@ export function BoardView() {
   );
 }
 
+/** "Auth API, DB schema +2" — a couple of names, the rest folded into a count. */
+function nameList(tasks: Task[], shown = 2): string {
+  const names = tasks.slice(0, shown).map((t) => (t.title.length > 18 ? t.title.slice(0, 17) + '…' : t.title));
+  const rest = tasks.length - names.length;
+  return names.join(', ') + (rest > 0 ? ` +${rest}` : '');
+}
+
 function TaskCard({ task }: { task: Task }) {
-  const { prerequisitesOf, dependentsOf } = useTasks();
+  const { prerequisitesOf, dependentsOf, edges, byId } = useTasks();
   const { selectedId, select } = useUI();
   const pre = prerequisitesOf(task.id).length;
   const dep = dependentsOf(task.id).length;
+
+  // The tasks keeping this one closed: unfinished strict prerequisites.
+  const waitingFor = edges
+    .filter((e) => e.targetId === task.id && e.type === 'STRICT_PREREQUISITE')
+    .map((e) => byId.get(e.sourceId))
+    .filter((t): t is Task => !!t && t.status !== 'COMPLETED');
+  // The tasks this one opens: dependents whose only unfinished strict
+  // prerequisite is this task — completing it unblocks them immediately.
+  const opensNext = edges
+    .filter((e) => e.sourceId === task.id && e.type === 'STRICT_PREREQUISITE')
+    .map((e) => byId.get(e.targetId))
+    .filter((t): t is Task => !!t)
+    .filter((d) => !edges.some((e) =>
+      e.targetId === d.id && e.type === 'STRICT_PREREQUISITE' && e.sourceId !== task.id
+      && (byId.get(e.sourceId)?.status ?? 'COMPLETED') !== 'COMPLETED'));
 
   return (
     <article
@@ -88,6 +110,18 @@ function TaskCard({ task }: { task: Task }) {
         {pre > 0 && <span className="meta" title="Prerequisites"><Icon name="link" />{pre}</span>}
         {dep > 0 && <span className="meta" title="Unlocks"><Icon name="unlocks" />{dep}</span>}
       </div>
+      {task.status !== 'COMPLETED' && waitingFor.length > 0 && (
+        <div className="card__rel card__rel--wait" title={`Waiting for: ${waitingFor.map((t) => t.title).join(', ')}`}>
+          <Icon name="lock" />
+          <span className="card__rel-text">Waiting for: {nameList(waitingFor)}</span>
+        </div>
+      )}
+      {task.status !== 'COMPLETED' && opensNext.length > 0 && (
+        <div className="card__rel card__rel--open" title={`Completing this opens: ${opensNext.map((t) => t.title).join(', ')}`}>
+          <Icon name="unlocks" />
+          <span className="card__rel-text">Opens: {nameList(opensNext)}</span>
+        </div>
+      )}
       <div className="card__actions">
         <AdvanceButton task={task} small />
       </div>

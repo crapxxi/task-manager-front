@@ -52,6 +52,14 @@ export function TopBar() {
           >
             Plan
           </button>
+          <button
+            role="tab"
+            aria-selected={view === 'roadmap'}
+            className={`tabs__btn ${view === 'roadmap' ? 'is-active' : ''}`}
+            onClick={() => setView('roadmap')}
+          >
+            Roadmap
+          </button>
         </div>
 
         <button className="iconbtn" title="Edit project" onClick={() => openEditProject(current)}><Icon name="edit" /></button>

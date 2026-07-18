@@ -289,6 +289,10 @@ interface TasksCtx {
   prerequisitesOf: (id: number) => Task[];
   dependentsOf: (id: number) => Task[];
   descendants: (id: number) => Set<number>;
+  /** Transitive dependents reachable via STRICT prerequisites only (what a task truly unlocks). */
+  strictDescendants: (id: number) => Set<number>;
+  /** Backend-computed influence per task (count of strict transitive dependents). */
+  influenceById: Map<number, number>;
   create: (body: Omit<TaskRequest, 'projectId'>) => Promise<void>;
   update: (id: number, body: Omit<TaskRequest, 'projectId'>) => Promise<void>;
   remove: (id: number) => Promise<boolean>;
@@ -322,6 +326,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   const [edges, setEdges] = useState<GraphEdge[]>([]);
   const [groups, setGroups] = useState<TaskGroup[]>([]);
   const [archives, setArchives] = useState<GraphArchive[]>([]);
+  const [influenceById, setInfluenceById] = useState<Map<number, number>>(new Map());
 
   const reload = useCallback(async () => {
     if (currentId == null) {
@@ -329,6 +334,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       setEdges([]);
       setGroups([]);
       setArchives([]);
+      setInfluenceById(new Map());
       setStatus('ready');
       return;
     }
@@ -361,6 +367,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       setEdges(graph.edges);
       setGroups(groupList);
       setArchives([...archiveList].sort((a, b) => b.archivedAt.localeCompare(a.archivedAt)));
+      setInfluenceById(new Map(graph.nodes.map((n) => [n.id, n.influence ?? 0])));
       setStatus('ready');
     } catch (err) {
       console.error('Failed to load tasks', err);
@@ -398,6 +405,28 @@ export function TasksProvider({ children }: { children: ReactNode }) {
         const u = stack.pop()!;
         for (const v of out.get(u) ?? []) if (!seen.has(v)) { seen.add(v); stack.push(v); }
       }
+      return seen;
+    },
+    [edges],
+  );
+  // Downstream cone via STRICT edges only — the tasks this one actually unlocks,
+  // mirroring how the backend counts influence.
+  const strictDescendants = useCallback(
+    (id: number) => {
+      const out = new Map<number, number[]>();
+      for (const e of edges) {
+        if (e.type !== 'STRICT_PREREQUISITE') continue;
+        const arr = out.get(e.sourceId);
+        if (arr) arr.push(e.targetId);
+        else out.set(e.sourceId, [e.targetId]);
+      }
+      const seen = new Set<number>();
+      const stack = [id];
+      while (stack.length) {
+        const u = stack.pop()!;
+        for (const v of out.get(u) ?? []) if (!seen.has(v)) { seen.add(v); stack.push(v); }
+      }
+      seen.delete(id);
       return seen;
     },
     [edges],
@@ -516,11 +545,13 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   const value = useMemo<TasksCtx>(
     () => ({
       status, tasks, byId, edges, groups, reload, prerequisitesOf, dependentsOf, descendants,
+      strictDescendants, influenceById,
       create, update, remove, bind, unbind, changeBindType, toggle,
       createGroup, renameGroup, removeGroup, setTaskGroup, assignToGroup, groupTasks,
       archives, archiveBranch, restoreArchive, fetchArchiveGraph,
     }),
     [status, tasks, byId, edges, groups, reload, prerequisitesOf, dependentsOf, descendants,
+      strictDescendants, influenceById,
       create, update, remove, bind, unbind, changeBindType, toggle,
       createGroup, renameGroup, removeGroup, setTaskGroup, assignToGroup, groupTasks,
       archives, archiveBranch, restoreArchive, fetchArchiveGraph],
@@ -536,7 +567,7 @@ export const useTasks = () => {
 /* ============================================================
    UI (view, selection, search, modals)
    ============================================================ */
-export type View = 'board' | 'graph' | 'plan';
+export type View = 'board' | 'graph' | 'plan' | 'roadmap';
 export interface ConfirmOptions { title: string; message: string; confirmLabel?: string }
 interface ConfirmRequest { opts: ConfirmOptions; resolve: (ok: boolean) => void }
 

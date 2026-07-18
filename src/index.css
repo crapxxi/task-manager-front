@@ -30,6 +30,9 @@
   --expired-soft: #fdeef2;
 
   --edge: #b3bac2;
+  --influence: #b3541e;
+  --inf-open: #b3541e;
+  --inf-done: #15803d;
 
   --radius: 8px;
   --radius-sm: 6px;
@@ -65,6 +68,9 @@
   --expired-soft: #3a2229;
 
   --edge: #4b535c;
+  --influence: #e0763f;
+  --inf-open: #e0763f;
+  --inf-done: #34c47c;
 
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.5);
@@ -524,6 +530,20 @@ h1, h2, h3, p { margin: 0; }
 
 .meta { display: inline-flex; align-items: center; gap: 4px; }
 
+/* Relation lines: who keeps this card closed / whom it opens on completion. */
+.card__rel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+  min-width: 0;
+}
+.card__rel svg { flex-shrink: 0; }
+.card__rel-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card__rel--wait { color: var(--blocked); }
+.card__rel--open { color: var(--success); }
+
 .card__actions { margin-top: 10px; }
 
 /* Status pieces */
@@ -570,6 +590,9 @@ h1, h2, h3, p { margin: 0; }
 .chip--blocked { color: var(--blocked); border-color: var(--blocked); background: var(--blocked-soft); }
 .chip--muted { color: var(--text-faint); }
 .chip--xs { font-size: 11px; padding: 0 6px; }
+/* Relation markers in dependency lists: what closes this task vs what it opens. */
+.chip--rel-wait { color: var(--blocked); border-color: var(--blocked); }
+.chip--rel-open { color: var(--success); border-color: var(--success); }
 
 /* Importance chips: quiet when low, louder as it climbs */
 .chip--imp-0 { color: var(--text-faint); border-style: dashed; }
@@ -1076,6 +1099,9 @@ h1, h2, h3, p { margin: 0; }
 .edge--optional { stroke-dasharray: 6 5; }
 .edge.is-active { stroke: var(--primary); stroke-width: 2.2; }
 .edge.is-dim { opacity: 0.25; }
+/* Influence cone: strict edges downstream of the focused task
+   (colour comes inline from the root task's state). */
+.edge--influence.is-active { stroke: var(--influence); stroke-width: 2.4; stroke-linecap: round; }
 
 /* Nodes */
 .gnode { cursor: pointer; transition: opacity 0.12s; }
@@ -1183,6 +1209,51 @@ h1, h2, h3, p { margin: 0; }
 @media (pointer: coarse) {
   .gnode__branch { opacity: 0.65; }
   .gnode__branch.is-root { opacity: 1; }
+}
+
+/* Influence overlay — how much each task drives.
+   Green depth = influence already delivered (completed task);
+   rust depth = influence still ahead of open work. */
+.gnode--inf-open { --infc: var(--inf-open); }
+.gnode--inf-done { --infc: var(--inf-done); }
+.gnode__heat { fill: var(--infc, var(--influence)); pointer-events: none; }
+.gnode__heat-track { fill: var(--infc, var(--influence)); opacity: 0.16; pointer-events: none; }
+.gnode__heat-fill { fill: var(--infc, var(--influence)); opacity: 0.9; pointer-events: none; }
+.gnode--hot .gnode__box { stroke: var(--infc, var(--influence)); stroke-width: 1.6; }
+.gnode--cone-root .gnode__box {
+  stroke: var(--infc, var(--influence));
+  stroke-width: 2.2;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--infc, var(--influence)) 55%, transparent));
+}
+.gnode__inf { pointer-events: none; }
+.gnode__inf-bg { fill: var(--surface); stroke: var(--infc, var(--influence)); stroke-width: 1.2; }
+.gnode__inf-bolt { fill: var(--infc, var(--influence)); }
+.gnode__inf-label {
+  fill: var(--infc, var(--influence));
+  font-size: 10.5px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+/* Minimap */
+.minimap {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 5;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  touch-action: none;
+}
+.minimap__bg { fill: var(--surface); opacity: 0.92; }
+.minimap__view {
+  fill: var(--primary);
+  fill-opacity: 0.14;
+  stroke: var(--primary);
+  stroke-width: 1.4;
 }
 
 .gnode__handle { cursor: crosshair; }
@@ -1459,6 +1530,143 @@ h1, h2, h3, p { margin: 0; }
 }
 
 /* ============================================================
+   Roadmap (dependency timeline)
+   ============================================================ */
+.roadmap { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+
+.roadmap__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* One scroll container for both axes; the list is sticky-left and the
+   day header sticky-top, so orientation never gets lost. */
+.roadmap__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.roadmap__canvas { display: flex; width: max-content; min-width: 100%; }
+
+.roadmap__list {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  flex-shrink: 0;
+  width: 250px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+.roadmap__list-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.roadmap__lrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0 12px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+.roadmap__lrow--group { font-weight: 600; background: var(--surface-2); }
+button.roadmap__lrow { cursor: pointer; }
+button.roadmap__lrow:hover { background: var(--surface-2); }
+.roadmap__lrow.is-active { box-shadow: inset 2.5px 0 0 var(--primary); }
+.roadmap__lname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roadmap__lh { flex-shrink: 0; }
+
+.roadmap__tl { position: relative; }
+.roadmap__days {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.roadmap__day {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  border-right: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.roadmap__grid { position: relative; }
+.roadmap__grid-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border); opacity: 0.6; }
+.roadmap__now { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--primary); opacity: 0.7; }
+.roadmap__now-chip {
+  position: absolute;
+  top: 6px;
+  left: 5px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.roadbar {
+  position: absolute;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border: none;
+  border-radius: 7px;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.roadbar__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roadbar.is-active { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* Active work reads as "in motion": subtle candy stripes. */
+.roadbar--progress {
+  background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 6px, transparent 6px 12px);
+}
+/* Group rows carry a soft band across the timeline instead of a bar. */
+.roadmap__grouprow { position: absolute; left: 0; right: 0; background: var(--surface-2); opacity: 0.6; }
+
+.roadmap__links { position: absolute; inset: 0; pointer-events: none; }
+.roadmap__links path { fill: none; stroke: var(--edge); stroke-width: 1.4; opacity: 0.28; }
+.roadmap__links path.is-hot { stroke: var(--primary); stroke-width: 1.8; opacity: 1; }
+
+/* ============================================================
    Responsive
    ============================================================ */
 @media (max-width: 900px) {
@@ -1507,6 +1715,12 @@ h1, h2, h3, p { margin: 0; }
   .graph-toolbar { justify-content: flex-end; }
   .gbtns .iconbtn { width: 38px; height: 38px; }
   .gbtn__label { display: none; }
+  /* The minimap competes with the bottom action bars on a phone. */
+  .minimap { display: none; }
+
+  /* Roadmap on a phone: narrower sticky list, effort column dropped. */
+  .roadmap__list { width: 158px; }
+  .roadmap__lh { display: none; }
   .gbranch { max-width: 42vw; }
   .graph.graph--full { padding: 8px 10px 6px; }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Icon } from '../icons';
 import { api } from '../api';
 import { useTasks, useUI } from '../state';
@@ -32,9 +32,28 @@ export function TaskDrawer() {
 
 function DrawerBody({ task }: { task: Task }) {
   const { clearSelection, openEdit, confirm, focusBranch, setView } = useUI();
-  const { prerequisitesOf, dependentsOf, remove, unbind } = useTasks();
+  const { prerequisitesOf, dependentsOf, remove, unbind, edges, byId } = useTasks();
   const prerequisites = prerequisitesOf(task.id);
   const dependents = dependentsOf(task.id);
+
+  // Which prerequisites are actually keeping this task closed right now:
+  // strict links whose source isn't completed yet.
+  const blockingIds = useMemo(() => new Set(
+    edges
+      .filter((e) => e.targetId === task.id && e.type === 'STRICT_PREREQUISITE'
+        && byId.get(e.sourceId)?.status !== 'COMPLETED')
+      .map((e) => e.sourceId),
+  ), [edges, byId, task.id]);
+  // Which dependents this task opens the moment it completes — ones whose only
+  // unfinished strict prerequisite is this task.
+  const opensNextIds = useMemo(() => new Set(
+    edges
+      .filter((e) => e.sourceId === task.id && e.type === 'STRICT_PREREQUISITE')
+      .map((e) => e.targetId)
+      .filter((depId) => !edges.some((e) =>
+        e.targetId === depId && e.type === 'STRICT_PREREQUISITE' && e.sourceId !== task.id
+        && (byId.get(e.sourceId)?.status ?? 'COMPLETED') !== 'COMPLETED')),
+  ), [edges, byId, task.id]);
 
   async function onDelete() {
     const ok = await confirm({
@@ -94,6 +113,7 @@ function DrawerBody({ task }: { task: Task }) {
         subtitle="Must be completed before this task"
         rows={prerequisites}
         onRemove={(p) => void unbind(task.id, p.id)}
+        chipFor={(p) => (blockingIds.has(p.id) ? { label: 'blocks this', kind: 'wait' } : null)}
         footer={<AddPrerequisite task={task} />}
       />
       <DepSection
@@ -101,6 +121,9 @@ function DrawerBody({ task }: { task: Task }) {
         subtitle="Tasks waiting on this one"
         rows={dependents}
         onRemove={(d) => void unbind(d.id, task.id)}
+        chipFor={(d) => (opensNextIds.has(d.id)
+          ? { label: task.status === 'COMPLETED' ? 'opened by this' : 'opens next', kind: 'open' }
+          : null)}
       />
 
       <div className="drawer__section">
@@ -180,11 +203,13 @@ function EffortResult({ hours }: { hours: number }) {
   );
 }
 
-function DepSection({ title, subtitle, rows, onRemove, footer }: {
+function DepSection({ title, subtitle, rows, onRemove, chipFor, footer }: {
   title: string;
   subtitle: string;
   rows: Task[];
   onRemove: (task: Task) => void;
+  /** Optional relation marker per row: which side opens/closes what. */
+  chipFor?: (task: Task) => { label: string; kind: 'wait' | 'open' } | null;
   footer?: ReactNode;
 }) {
   const { select } = useUI();
@@ -196,10 +221,13 @@ function DepSection({ title, subtitle, rows, onRemove, footer }: {
       </div>
       {rows.length > 0 ? (
         <div className="deplist">
-          {rows.map((t) => (
+          {rows.map((t) => {
+            const rel = chipFor?.(t) ?? null;
+            return (
             <div key={t.id} className="deprow" onClick={() => select(t.id)}>
               <StatusDot status={t.status} />
               <span className="deprow__title">{t.title}</span>
+              {rel && <span className={`chip chip--xs chip--rel-${rel.kind}`}>{rel.label}</span>}
               {t.isBlocked && <span className="chip chip--blocked chip--xs">blocked</span>}
               <span className="muted deprow__h">{t.durationHours}h</span>
               <button
@@ -210,7 +238,8 @@ function DepSection({ title, subtitle, rows, onRemove, footer }: {
                 <Icon name="unlink" />
               </button>
             </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="muted small">None</div>

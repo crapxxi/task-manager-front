@@ -3,6 +3,10 @@ export const NODE_H = 64;
 const HGAP = 48;
 const VGAP = 72;
 
+/** Stable per-group accent colours, shared by the graph and the roadmap. */
+export const GROUP_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#e11d48'];
+export const groupColor = (gid: number) => GROUP_COLORS[Math.abs(gid) % GROUP_COLORS.length];
+
 export interface XY {
   x: number;
   y: number;
