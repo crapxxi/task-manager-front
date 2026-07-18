@@ -259,10 +259,6 @@ export function RoadmapView() {
                   />
                 ) : null,
               )}
-              <div className="roadmap__now" title="Work starts here">
-                <span className="roadmap__now-chip">Now</span>
-              </div>
-
               {/* Dependency links live BEHIND the bars — quiet by default, the
                   hovered/selected task's own links come forward. */}
               <svg className="roadmap__links" width={tlW} height={bodyH} aria-hidden="true">

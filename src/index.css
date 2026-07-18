@@ -1446,9 +1446,25 @@ h1, h2, h3, p { margin: 0; }
 .gselbar__pair { display: inline-flex; align-items: center; gap: 6px; }
 .gselbar .input { width: 168px; }
 
+/* On a phone the bottom-anchored bar hides behind the on-screen keyboard the
+   moment the group-title input gets focus — anchor it to the top instead and
+   stack the controls full-width. */
 @media (max-width: 720px) {
-  .gselbar { bottom: 8px; padding: 6px 8px; }
-  .gselbar .input { width: 132px; }
+  .gselbar {
+    top: 8px;
+    bottom: auto;
+    left: 8px;
+    right: 8px;
+    transform: none;
+    max-width: none;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+  .gselbar__count { grid-row: 1; grid-column: 1; align-self: center; }
+  .gselbar > .iconbtn { grid-row: 1; grid-column: 2; }
+  .gselbar__pair { grid-column: 1 / -1; display: flex; }
+  .gselbar__pair .input { flex: 1; width: auto; min-width: 0; }
 }
 
 /* ============================================================
@@ -1625,20 +1641,6 @@ button.roadmap__lrow:hover { background: var(--surface-2); }
 
 .roadmap__grid { position: relative; }
 .roadmap__grid-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border); opacity: 0.6; }
-.roadmap__now { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: var(--primary); opacity: 0.7; }
-.roadmap__now-chip {
-  position: absolute;
-  top: 6px;
-  left: 5px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--primary);
-  color: #fff;
-  font-size: 10.5px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
 .roadbar {
   position: absolute;
   height: 28px;
@@ -1671,6 +1673,17 @@ button.roadmap__lrow:hover { background: var(--surface-2); }
 /* ============================================================
    Responsive
    ============================================================ */
+/* iOS force-zooms into any focused field whose font is under 16px — the page
+   jump that made typing a group name on a phone unusable. */
+@media (pointer: coarse) {
+  .input,
+  .textarea,
+  select,
+  .projects__select {
+    font-size: 16px;
+  }
+}
+
 @media (max-width: 900px) {
   .board { grid-template-columns: 1fr; overflow-y: auto; }
   .column { min-height: auto; }
