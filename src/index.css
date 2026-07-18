@@ -1714,6 +1714,9 @@ button.roadmap__lrow:hover { background: var(--surface-2); }
   .graph .legend { display: none; }
   .graph-toolbar { justify-content: flex-end; }
   .gbtns .iconbtn { width: 38px; height: 38px; }
+  /* Text buttons collapse to icons here — keep every toolbar button the same
+     38px height (and no narrower than square) so the row lines up. */
+  .gbtns .btn--sm { min-height: 38px; min-width: 38px; padding: 4px 10px; }
   .gbtn__label { display: none; }
   /* The minimap competes with the bottom action bars on a phone. */
   .minimap { display: none; }

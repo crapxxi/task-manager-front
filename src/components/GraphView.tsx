@@ -116,7 +116,7 @@ export function GraphView() {
   const { selectedId, select, branchRoot, focusBranch, form, projectForm, confirmRequest, confirm } = useUI();
   const { username } = useAuth();
   const { currentId } = useProjects();
-  const posKey = `tm.graph.pos.${username ?? 'anon'}.${currentId ?? 0}`;
+  const posKeyBase = `tm.graph.pos.${username ?? 'anon'}.${currentId ?? 0}`;
   const collapseKey = `tm.graph.fold.${username ?? 'anon'}.${currentId ?? 0}`;
   const gfoldKey = `tm.graph.gfold.${username ?? 'anon'}.${currentId ?? 0}`;
   const svgRef = useRef<SVGSVGElement>(null);
@@ -150,6 +150,9 @@ export function GraphView() {
     set.add(branchRoot);
     return set;
   }, [branchRoot, byId, descendants]);
+  /* Branch focus keeps its own layout store — rearranging inside a branch must
+     not bleed into the full graph's saved positions (or vice versa). */
+  const posKey = branchSet != null ? `${posKeyBase}.b${branchRoot}` : posKeyBase;
   const scopedTasks = useMemo(() => (branchSet ? tasks.filter((t) => branchSet.has(t.id)) : tasks), [tasks, branchSet]);
   const scopedEdges = useMemo(
     () => (branchSet ? edges.filter((e) => branchSet.has(e.sourceId) && branchSet.has(e.targetId)) : edges),
@@ -297,7 +300,12 @@ export function GraphView() {
     [drawnEdges],
   );
 
-  const sig = useMemo(() => layoutNodes.map((n) => n.id).sort((a, b) => a - b).join(','), [layoutNodes]);
+  // The storage key is part of the signature: entering/leaving branch focus
+  // must re-read the right store even when the visible node set is identical.
+  const sig = useMemo(
+    () => posKey + '|' + layoutNodes.map((n) => n.id).sort((a, b) => a - b).join(','),
+    [posKey, layoutNodes],
+  );
   const [positions, setPositions] = useState<Map<number, XY>>(() => new Map());
   // Which storage key the current `positions` belong to. On a project switch
   // posKey changes immediately while positions/tasks still hold the previous
@@ -320,12 +328,17 @@ export function GraphView() {
     if (sig !== laidSig.current) {
       laidSig.current = sig;
       const layout = computeLayout(layoutNodes, layoutLinks);
+      // A branch starts from the full graph's arrangement; its own saved
+      // positions (from earlier branch sessions) win over that.
+      if (posKey !== posKeyBase) {
+        for (const [id, p] of readPositions(posKeyBase)) if (layout.has(id)) layout.set(id, p);
+      }
       for (const [id, p] of readPositions(posKey)) if (layout.has(id)) layout.set(id, p);
       setPositions(layout);
       posOwner.current = posKey;
       needFit.current = true;
     }
-  }, [sig, layoutNodes, layoutLinks, posKey]);
+  }, [sig, layoutNodes, layoutLinks, posKey, posKeyBase]);
 
   // Persist the arrangement (debounced — drags update positions every frame).
   // Merged over what's already saved, so positions of hidden tasks survive;
@@ -342,6 +355,20 @@ export function GraphView() {
     }, 400);
     return () => window.clearTimeout(t);
   }, [positions, posKey, tasks, groups]);
+
+  // Branch layout stores die with their root task. The posOwner guard keeps a
+  // project-switch window (stale tasks, fresh key) from touching the new
+  // project's stores.
+  useEffect(() => {
+    if (status !== 'ready' || posOwner.current !== posKeyBase) return;
+    const prefix = `${posKeyBase}.b`;
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix) && !byId.has(Number(k.slice(prefix.length)))) {
+        localStorage.removeItem(k);
+      }
+    }
+  }, [status, byId, posKeyBase]);
 
   const fitToView = useCallback(() => {
     const svg = svgRef.current;
