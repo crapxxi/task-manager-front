@@ -1,0 +1,9 @@
+{
+  "namespace": "TaskManagerDS",
+  "source": "task-manager-front@0.1.0",
+  "shape": "package",
+  "provider": "ThemeProvider",
+  "componentCount": 21,
+  "skippedStoryIds": [],
+  "runtimeFontPrefixes": []
+}

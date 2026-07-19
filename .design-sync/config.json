@@ -1,0 +1,64 @@
+{
+  "projectId": "0258b05f-0dfd-4cf6-92e5-d80d343f68c8",
+  "shape": "package",
+  "pkg": "task-manager-front",
+  "globalName": "TaskManagerDS",
+  "tsconfig": "tsconfig.json",
+  "entry": ".design-sync/ds-entry.ts",
+  "readmeHeader": ".design-sync/conventions.md",
+  "cssEntry": "src/index.css",
+  "provider": {
+    "component": "ThemeProvider",
+    "inner": {
+      "component": "ToastProvider",
+      "inner": {
+        "component": "AuthProvider",
+        "inner": {
+          "component": "ProjectsProvider",
+          "inner": {
+            "component": "TasksProvider",
+            "inner": { "component": "UIProvider" }
+          }
+        }
+      }
+    }
+  },
+  "overrides": {
+    "BoardView": { "cardMode": "column", "viewport": "1280x760" },
+    "RoadmapView": { "cardMode": "column", "viewport": "1280x760" },
+    "PlanView": { "cardMode": "column", "viewport": "1280x760" },
+    "GraphView": { "cardMode": "column", "viewport": "1280x760" },
+    "TopBar": { "cardMode": "column" },
+    "StatsBar": { "cardMode": "column" }
+  },
+  "componentSrcMap": {
+    "App": null,
+    "ThemeProvider": null,
+    "ToastProvider": null,
+    "AuthProvider": null,
+    "ProjectsProvider": null,
+    "TasksProvider": null,
+    "UIProvider": null,
+    "StatusDot": "src/components/ui.tsx",
+    "ImportanceChip": "src/components/ui.tsx",
+    "StatusBadge": "src/components/ui.tsx",
+    "AdvanceButton": "src/components/ui.tsx",
+    "LoadingState": "src/components/ui.tsx",
+    "EmptyState": "src/components/ui.tsx",
+    "NoProjects": "src/components/ui.tsx",
+    "ProjectsError": "src/components/ui.tsx",
+    "ConnectionError": "src/components/ui.tsx",
+    "Icon": "src/icons.tsx",
+    "TopBar": "src/components/TopBar.tsx",
+    "Sidebar": "src/components/Sidebar.tsx",
+    "StatsBar": "src/components/StatsBar.tsx",
+    "Toaster": "src/components/Toaster.tsx",
+    "BoardView": "src/components/BoardView.tsx",
+    "RoadmapView": "src/components/RoadmapView.tsx",
+    "PlanView": "src/components/PlanView.tsx",
+    "GraphView": "src/components/GraphView.tsx",
+    "AuthScreen": "src/components/AuthScreen.tsx",
+    "ModalHost": "src/components/Modals.tsx",
+    "TaskDrawer": "src/components/TaskDrawer.tsx"
+  }
+}

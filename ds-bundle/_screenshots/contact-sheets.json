@@ -1,0 +1,33 @@
+[
+  {
+    "sheet": 1,
+    "components": [
+      "AdvanceButton",
+      "AuthScreen",
+      "BoardView",
+      "ConnectionError",
+      "EmptyState",
+      "GraphView",
+      "Icon",
+      "ImportanceChip",
+      "LoadingState",
+      "ModalHost",
+      "NoProjects",
+      "PlanView",
+      "ProjectsError",
+      "RoadmapView",
+      "Sidebar",
+      "StatsBar"
+    ]
+  },
+  {
+    "sheet": 2,
+    "components": [
+      "StatusBadge",
+      "StatusDot",
+      "TaskDrawer",
+      "Toaster",
+      "TopBar"
+    ]
+  }
+]

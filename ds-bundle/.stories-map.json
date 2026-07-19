@@ -1,0 +1,180 @@
+{
+  "global": "TaskManagerDS",
+  "pkg": "task-manager-front",
+  "pkgDir": "/Users/ajsana/Documents/task-manager-front",
+  "extraEntries": [],
+  "exported": [],
+  "storybookStatic": null,
+  "keyRecipe": 7,
+  "cfgSliceGlobal": "68e5026e36dcc3f905f352faf74f9a64c1b9189d8e4475b4b4411b0bf5e740cc",
+  "components": [
+    {
+      "name": "AdvanceButton",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "592633f7634a2819",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "AuthScreen",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "1315e1d4d2f0db45",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "BoardView",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "27d3f564078276ba",
+      "cfgSlice": "e7c6ffd8ab60482cade0185eeda474432cda654364d44ca3946fa9eb2e744b82",
+      "stories": []
+    },
+    {
+      "name": "ConnectionError",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "8982b0e478637582",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "EmptyState",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "a2df6565d8dc64c9",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "GraphView",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "b8c7469775013c49",
+      "cfgSlice": "e7c6ffd8ab60482cade0185eeda474432cda654364d44ca3946fa9eb2e744b82",
+      "stories": []
+    },
+    {
+      "name": "Icon",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "ce93c9990680945d",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "ImportanceChip",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "1421ed288f493d50",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "LoadingState",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "f4f778899f64acd3",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "ModalHost",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "73590e6431e36e7d",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "NoProjects",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "09a1bf0226606ab6",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "PlanView",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "671abbe1cedcde98",
+      "cfgSlice": "e7c6ffd8ab60482cade0185eeda474432cda654364d44ca3946fa9eb2e744b82",
+      "stories": []
+    },
+    {
+      "name": "ProjectsError",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "ec9288c251cd089b",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "RoadmapView",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "cb06604d536031c2",
+      "cfgSlice": "e7c6ffd8ab60482cade0185eeda474432cda654364d44ca3946fa9eb2e744b82",
+      "stories": []
+    },
+    {
+      "name": "Sidebar",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "a7646a4d9e6a67f3",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "StatsBar",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "adf12f8bac9806e8",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "StatusBadge",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "b203076385753b0a",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "StatusDot",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "0cbda54dc2d662fe",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "TaskDrawer",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "3d52c1df8fbe5873",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "Toaster",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "b321403f1a12f8dc",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "TopBar",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "d3c7b32a4898a33b",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    }
+  ]
+}
