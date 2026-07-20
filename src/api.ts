@@ -109,6 +109,8 @@ export const api = {
     req<TaskResponse[]>('PATCH', `/api/v1/tasks/${taskId}/bind/${parentId}`, type ? { query: { type } } : {}),
   unbind: (taskId: number, parentId: number) => req<TaskResponse[]>('PATCH', `/api/v1/tasks/${taskId}/unbind/${parentId}`),
   toggleStatus: (id: number) => req<TaskResponse>('PATCH', `/api/v1/tasks/${id}/toggle-status`),
+  /** Subtasks of one parent, unpaged. The project task list carries them too (via parentId). */
+  getSubtasks: (taskId: number) => req<TaskResponse[]>('GET', `/api/v1/tasks/${taskId}/subtasks`),
   updateBindType: (taskId: number, parentId: number, type: DependencyType) =>
     req<TaskResponse[]>('PATCH', `/api/v1/tasks/${taskId}/dependency-update/${parentId}`, { query: { type } }),
 

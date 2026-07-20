@@ -1,5 +1,5 @@
 import { Icon } from '../icons';
-import { IMPORTANCE_LABEL, STATUS_LABEL, type Task, type TaskStatus } from '../types';
+import { IMPORTANCE_LABEL, STATUS_LABEL, type SubtaskStats, type Task, type TaskStatus } from '../types';
 import { useProjects, useTasks, useUI } from '../state';
 
 export function StatusDot({ status }: { status: TaskStatus }) {
@@ -27,8 +27,10 @@ export function StatusBadge({ status }: { status: TaskStatus }) {
 
 /** Forward-only status control matching the backend's toggle endpoint. */
 export function AdvanceButton({ task, small }: { task: Task; small?: boolean }) {
-  const { toggle } = useTasks();
+  const { toggle, subtaskStats } = useTasks();
   const sm = small ? ' btn--sm' : '';
+  const stats = subtaskStats.get(task.id);
+  const openSubtasks = stats ? stats.total - stats.completed : 0;
 
   if (task.status === 'COMPLETED') {
     return (
@@ -63,11 +65,57 @@ export function AdvanceButton({ task, small }: { task: Task; small?: boolean }) 
       </button>
     );
   }
+  // A parent finishes on its own the moment its last subtask is done — the
+  // backend rejects completing it by hand, so don't offer the action at all.
+  if (openSubtasks > 0) {
+    return (
+      <button
+        className={`btn btn--ghost${sm}`}
+        disabled
+        title={`Completes automatically once all subtasks are done — ${openSubtasks} left`}
+      >
+        <Icon name="subtasks" />
+        {openSubtasks} subtask{openSubtasks === 1 ? '' : 's'} left
+      </button>
+    );
+  }
   return (
     <button className={`btn btn--success${sm}`} onClick={(e) => { e.stopPropagation(); void toggle(task.id); }}>
       <Icon name="check" />
       {small ? 'Complete' : 'Mark complete'}
     </button>
+  );
+}
+
+/**
+ * Subtask progress. A titled block rather than a stray bar: on a card this is
+ * the only sign that work is hidden underneath, so it has to read as its own
+ * thing. `bare` drops the title where a section header already says "Subtasks".
+ */
+export function SubtaskProgress({ stats, bare }: { stats: SubtaskStats; bare?: boolean }) {
+  const pct = stats.total === 0 ? 0 : Math.round((stats.completed / stats.total) * 100);
+  const complete = stats.completed === stats.total;
+  return (
+    <div
+      className={`subprog ${complete ? 'is-complete' : ''} ${bare ? 'subprog--bare' : ''}`}
+      title={`${stats.completed} of ${stats.total} subtasks completed`}
+    >
+      <div className="subprog__head">
+        {!bare && (
+          <span className="subprog__title">
+            <Icon name="subtasks" />
+            Subtasks
+          </span>
+        )}
+        <span className="subprog__count">
+          {stats.completed}<span className="subprog__of">/{stats.total}</span>
+          {complete && <Icon name="check" />}
+        </span>
+      </div>
+      <span className="subprog__track">
+        <span className="subprog__fill" style={{ width: `${pct}%` }} />
+      </span>
+    </div>
   );
 }
 
@@ -86,7 +134,7 @@ export function EmptyState() {
     <div className="placeholder">
       <h3 className="placeholder__title">No tasks yet</h3>
       <p className="placeholder__text">Create your first task. You can link tasks together later so one waits for another.</p>
-      <button className="btn btn--primary" onClick={openCreate}><Icon name="plus" />New task</button>
+      <button className="btn btn--primary" onClick={() => openCreate()}><Icon name="plus" />New task</button>
     </div>
   );
 }

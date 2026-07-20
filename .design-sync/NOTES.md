@@ -15,6 +15,22 @@
 
 (none — final validate was 21/21 clean with zero warns)
 
+## Uploaded project is STALE as of 2026-07-20
+
+The subtask feature + a visual refresh landed in the app **without** a re-sync
+(the user chose frontend-only that session), so claude.ai/design project
+`0258b05f` still serves the pre-subtask components and the old palette. The next
+sync is a normal re-sync — nothing special to do, just expect a large diff:
+every card re-renders (new tokens, accent rail) and `SubtaskProgress` is a new
+export that needs adding to `ds-entry.ts` + `componentSrcMap`.
+
+What changed: `Task`/`TaskRequest`/`TaskResponse` gained `parentId`, `GraphNode`
+gained `subtaskCount`/`completedSubtaskCount`, `api.getSubtasks` was added, and
+`useTasks().tasks` now returns **top-level tasks only** (subtasks live in
+`allTasks`/`subtasksOf`/`subtaskStats`). `preview-data.ts` was updated to match:
+tasks 10–14 are subtasks, the graph fixture filters them out and carries the two
+new counters, and the mock router answers `/tasks/{id}/subtasks`.
+
 ## Re-sync risks
 
 - `preview-data.ts` mirrors the backend DTO shapes (`TaskResponse`, `TaskGraph`, `PageResponse`, suggest endpoints). If `src/types.ts` or `src/api.ts` endpoints change, the mock silently drifts → views fall back to error/empty states. Check those files' diffs on re-sync.

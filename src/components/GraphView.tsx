@@ -30,6 +30,7 @@ import {
   type GraphArchive,
   type GraphEdge,
   type GraphNode,
+  type SubtaskStats,
   type Task,
   type TaskGraph,
   type TaskGroup,
@@ -38,12 +39,23 @@ import { ConnectionError, EmptyState, LoadingState, StatusDot } from './ui';
 
 interface Transform { tx: number; ty: number; k: number }
 
+/** Subtask cards in the expanded cluster — smaller than a real graph node. */
+const SUB_W = 172;
+const SUB_H = 46;
+const SUB_GAP = 12;
+/** Clear space between the parent's right edge and the cluster's left edge. */
+const SUB_OFFSET = 54;
+
 type Drag =
   | { type: 'pan'; sx: number; sy: number; otx: number; oty: number; moved: boolean }
   | { type: 'node'; id: number; sx: number; sy: number; ox: number; oy: number; moved: boolean }
   | { type: 'connect'; sourceId: number }
   | { type: 'chip'; id: number; sx: number; sy: number; moved: boolean }
   | { type: 'branch'; id: number; sx: number; sy: number; moved: boolean }
+  // Cluster cards aren't draggable and have no entry in `positions`; they only
+  // need tap-to-select, so they get their own kind rather than 'node'.
+  | { type: 'subnode'; id: number; sx: number; sy: number; moved: boolean }
+  | { type: 'subchip'; id: number; sx: number; sy: number; moved: boolean }
   | { type: 'edge'; id: number; sx: number; sy: number; moved: boolean };
 
 interface ConnectState {
@@ -113,6 +125,7 @@ function ghostPath(a: XY, x: number, y: number): string {
 export function GraphView() {
   const {
     status, tasks, byId, edges, groups, descendants, strictDescendants, influenceById,
+    subtaskStats, subtasksOf,
     bind, unbind, changeBindType, createGroup, renameGroup, removeGroup, assignToGroup, groupTasks,
     archives, archivesTotal, loadMoreArchives, archiveBranch, restoreArchive, fetchArchiveGraph,
   } = useTasks();
@@ -143,6 +156,8 @@ export function GraphView() {
   // Influence overlay: tints nodes by how much they unlock and, on hover/select,
   // lights up the downstream cone a task drives.
   const [influenceMode, setInfluenceMode] = useState(false);
+  /** Which task is currently showing its subtasks on the canvas. */
+  const [openCluster, setOpenCluster] = useState<number | null>(null);
 
   /* Branch focus: when a root task is chosen, the board narrows down to that
      task plus everything it unlocks. Cleared on project switch and when the
@@ -563,6 +578,16 @@ export function GraphView() {
       drag.current = { type: 'branch', id: Number(branchEl.getAttribute('data-branch')), sx: e.clientX, sy: e.clientY, moved: false };
       return;
     }
+    const subChip = el.closest('[data-subtasks]');
+    if (subChip) {
+      drag.current = { type: 'subchip', id: Number(subChip.getAttribute('data-subtasks')), sx: e.clientX, sy: e.clientY, moved: false };
+      return;
+    }
+    const subEl = el.closest('[data-subnode]');
+    if (subEl) {
+      drag.current = { type: 'subnode', id: Number(subEl.getAttribute('data-subnode')), sx: e.clientX, sy: e.clientY, moved: false };
+      return;
+    }
     const node = el.closest('[data-node]');
     if (node) {
       const id = Number(node.getAttribute('data-node'));
@@ -644,7 +669,10 @@ export function GraphView() {
         if (d.id < 0) unfoldGroup(-d.id);
         else if (selectMode) togglePick(d.id);
         else select(d.id);
-      } else if (d.type === 'chip' && !d.moved) toggleCollapse(d.id);
+      } else if (d.type === 'subchip' && !d.moved) {
+        setOpenCluster((cur) => (cur === d.id ? null : d.id));
+      } else if (d.type === 'subnode' && !d.moved) select(d.id);
+      else if (d.type === 'chip' && !d.moved) toggleCollapse(d.id);
       // Tap the ◎ on a node: focus its branch; tapping the current root exits.
       else if (d.type === 'branch' && !d.moved) focusBranch(branchRoot === d.id ? null : d.id);
       else if (d.type === 'edge' && !d.moved) {
@@ -745,6 +773,45 @@ export function GraphView() {
     for (const g of groupNodes) m.set(g.id, groupColor(g.gid));
     return m;
   }, [visibleTasks, groupNodes]);
+  /* ----------------------------------------------------------------
+     Subtask cluster: selecting a task that has subtasks draws them on
+     the canvas beside it and fades everything else, so decomposition is
+     something you can see in place instead of only as a list in the
+     drawer. Selecting one of the subtasks keeps the parent open, or the
+     cluster would collapse the moment you tried to click into it.
+     ---------------------------------------------------------------- */
+  // Deliberately NOT derived from selection: the drawer lays a full-screen
+  // scrim over the canvas, so a cluster tied to the selected task would be
+  // covered by the panel describing it and impossible to click into. Its own
+  // state means the cluster survives opening and dismissing the drawer.
+  const subtaskParentId = useMemo(
+    () => (openCluster != null && subtaskStats.has(openCluster) ? openCluster : null),
+    [openCluster, subtaskStats],
+  );
+
+  const subtaskCluster = useMemo(() => {
+    if (subtaskParentId == null) return null;
+    const anchor = positions.get(subtaskParentId);
+    if (!anchor) return null;
+    const items = subtasksOf(subtaskParentId);
+    if (items.length === 0) return null;
+    // Stacked in a column to the parent's right, centred on it. Kept out of
+    // `positions` on purpose: these are transient and must not disturb the
+    // saved layout, the fit-to-view bounds or the minimap.
+    const span = items.length * SUB_H + (items.length - 1) * SUB_GAP;
+    // `x` is the cards' centre, so it clears the parent by its own half-width
+    // on top of the gap — otherwise the column sits on the parent's edge.
+    const x = anchor.x + NODE_W / 2 + SUB_OFFSET + SUB_W / 2;
+    return {
+      anchor,
+      items: items.map((task, i) => ({
+        task,
+        x,
+        y: anchor.y - span / 2 + SUB_H / 2 + i * (SUB_H + SUB_GAP),
+      })),
+    };
+  }, [subtaskParentId, positions, subtasksOf]);
+
   const influenceCone = useMemo(
     () => (influenceMode && focusId != null ? strictDescendants(focusId) : null),
     [influenceMode, focusId, strictDescendants],
@@ -947,9 +1014,13 @@ export function GraphView() {
                 const inCone = coneWithRoot != null && coneWithRoot.has(t.id);
                 const dim = connect
                   ? !isSource && !linkable
-                  : coneWithRoot != null
-                    ? !inCone
-                    : focusId != null && focusId !== t.id && !neighbors.has(t.id);
+                  // An open cluster owns the canvas: everything but its parent
+                  // recedes so the decomposition reads on its own.
+                  : subtaskCluster
+                    ? t.id !== subtaskParentId
+                    : coneWithRoot != null
+                      ? !inCone
+                      : focusId != null && focusId !== t.id && !neighbors.has(t.id);
                 const influence = influenceById.get(t.id) ?? 0;
                 return (
                   <TaskNode
@@ -971,6 +1042,8 @@ export function GraphView() {
                     influence={influence}
                     heat={maxInfluence > 0 ? influence / maxInfluence : 0}
                     coneRoot={influenceCone != null && focusId === t.id}
+                    subtasks={subtaskStats.get(t.id)}
+                    clusterOpen={subtaskParentId === t.id}
                     onHover={setHoverId}
                   />
                 );
@@ -981,6 +1054,27 @@ export function GraphView() {
                 return <GroupSuperNode key={g.id} node={g} p={p} dim={!!connect} />;
               })}
             </g>
+
+            {/* Subtasks of the selected task, drawn last so they sit above the
+                faded graph. Composition, not ordering — hence dotted tethers
+                with no arrowheads, nothing like a dependency edge. */}
+            {subtaskCluster && (
+              <g className="subcluster">
+                {subtaskCluster.items.map(({ task: s, x, y }) => (
+                  <path
+                    key={`link-${s.id}`}
+                    className="subcluster__tether"
+                    d={`M ${subtaskCluster.anchor.x + NODE_W / 2} ${subtaskCluster.anchor.y}
+                        C ${subtaskCluster.anchor.x + NODE_W / 2 + SUB_OFFSET * 0.6} ${subtaskCluster.anchor.y},
+                          ${x - SUB_W / 2 - SUB_OFFSET * 0.6} ${y},
+                          ${x - SUB_W / 2} ${y}`}
+                  />
+                ))}
+                {subtaskCluster.items.map(({ task: s, x, y }) => (
+                  <SubtaskNode key={s.id} task={s} x={x} y={y} selected={selectedId === s.id} />
+                ))}
+              </g>
+            )}
           </g>
         </svg>
 
@@ -1192,11 +1286,15 @@ function SelectBar({ count, groups, busyDisabled, onAssign, onCreate, onDone }: 
   );
 }
 
-function TaskNode({ task, p, selected, dim, highlight, isCollapsed, hiddenCount, childCount, selectable, picked, isBranchRoot, influenceMode, influence, heat, coneRoot, onHover }: {
+function TaskNode({ task, p, selected, dim, highlight, isCollapsed, hiddenCount, childCount, selectable, picked, isBranchRoot, influenceMode, influence, heat, coneRoot, subtasks, clusterOpen, onHover }: {
   task: Task; p: XY; selected: boolean; dim: boolean; highlight: boolean;
   isCollapsed: boolean; hiddenCount: number; childCount: number;
   selectable: boolean; picked: boolean; isBranchRoot: boolean;
   influenceMode: boolean; influence: number; heat: number; coneRoot: boolean;
+  /** Present only for parents; subtasks are never nodes of their own. */
+  subtasks: SubtaskStats | undefined;
+  /** True while this node's subtask cluster is expanded on the canvas. */
+  clusterOpen: boolean;
   onHover: (id: number | null) => void;
 }) {
   const badge = isCollapsed ? `+${hiddenCount}` : '−';
@@ -1231,6 +1329,11 @@ function TaskNode({ task, p, selected, dim, highlight, isCollapsed, hiddenCount,
     >
       <title>{`${task.title} — ${STATUS_LABEL[task.status]}${influenceMode ? ` · unlocks ${influence} task${influence === 1 ? '' : 's'}` : ''}${isCollapsed ? ` (+${hiddenCount} hidden)` : ''}`}</title>
       {isCollapsed && <rect className="gnode__stack" x={-NODE_W / 2 + 5} y={-NODE_H / 2 + 5} width={NODE_W} height={NODE_H} rx={12} />}
+      {/* Work hidden underneath reads as a card behind the card — the same
+          "there's more here" cue as a collapsed branch, at a smaller offset. */}
+      {subtasks && !isCollapsed && (
+        <rect className="gnode__substack" x={-NODE_W / 2 + 4} y={-NODE_H / 2 + 4} width={NODE_W} height={NODE_H} rx={12} />
+      )}
       <rect className="gnode__box" x={-NODE_W / 2} y={-NODE_H / 2} width={NODE_W} height={NODE_H} rx={12} />
       {/* Influence depth: a whisper of tint plus a gauge along the bottom edge —
           the fuller (and warmer/greener) the strip, the more this task drives. */}
@@ -1259,6 +1362,24 @@ function TaskNode({ task, p, selected, dim, highlight, isCollapsed, hiddenCount,
         <tspan className={`gnode__imp--${task.importance}`}>{IMPORTANCE_LABEL[task.importance]}</tspan>
         {task.isBlocked && <tspan> · Blocked</tspan>}
       </text>
+
+      {/* Subtask chip: says there's work inside, and opens it on the canvas.
+          Sits on the bottom edge like the fold chip — same gesture language. */}
+      {subtasks && (
+        <g className={`gnode__subchip ${clusterOpen ? 'is-open' : ''}`} data-subtasks={task.id}>
+          <rect className="gnode__subchip-hit" x={-NODE_W / 2 + 8} y={NODE_H / 2 - 15} width={68} height={30} />
+          <rect className="gnode__subchip-bg" x={-NODE_W / 2 + 14} y={NODE_H / 2 - 9} width={54} height={18} rx={9} />
+          <path
+            className="gnode__subchip-icon"
+            transform={`translate(${-NODE_W / 2 + 25}, ${NODE_H / 2})`}
+            d="M-4 -4 v5 a2 2 0 0 0 2 2 h2 M1 -1 h4 v5 h-4 z"
+          />
+          <text className="gnode__subchip-label" x={-NODE_W / 2 + 47} y={NODE_H / 2 + 4}>
+            {subtasks.completed}/{subtasks.total}
+          </text>
+          <title>{clusterOpen ? 'Hide subtasks' : `Show ${subtasks.total} subtasks on the graph`}</title>
+        </g>
+      )}
 
       {/* Influence badge: a bolt + how many tasks this one drives. */}
       {influenceMode && influence > 0 && (
@@ -1331,6 +1452,31 @@ function TaskNode({ task, p, selected, dim, highlight, isCollapsed, hiddenCount,
           <title>{isCollapsed ? `Expand branch (+${hiddenCount} tasks)` : 'Collapse this branch'}</title>
         </g>
       )}
+    </g>
+  );
+}
+
+/** One subtask card in an expanded cluster. Tap selects it like any node. */
+function SubtaskNode({ task, x, y, selected }: { task: Task; x: number; y: number; selected: boolean }) {
+  return (
+    <g
+      className={[
+        'subnode',
+        `subnode--${task.status.toLowerCase()}`,
+        task.isBlocked ? 'subnode--blocked' : '',
+        selected ? 'is-selected' : '',
+      ].filter(Boolean).join(' ')}
+      data-subnode={task.id}
+      transform={`translate(${x},${y})`}
+    >
+      <title>{`${task.title} — ${STATUS_LABEL[task.status]}${task.isBlocked ? ' · Blocked' : ''}`}</title>
+      <rect className="subnode__box" x={-SUB_W / 2} y={-SUB_H / 2} width={SUB_W} height={SUB_H} rx={10} />
+      <circle className="subnode__dot" cx={-SUB_W / 2 + 16} cy={-4} r={3.5} />
+      <text className="subnode__title" x={-SUB_W / 2 + 28} y={-1}>{truncate(task.title, 17)}</text>
+      <text className="subnode__sub" x={-SUB_W / 2 + 28} y={14}>
+        {task.durationHours}h
+        {task.isBlocked && <tspan className="subnode__blocked"> · Blocked</tspan>}
+      </text>
     </g>
   );
 }

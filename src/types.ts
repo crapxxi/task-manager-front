@@ -86,6 +86,8 @@ export interface TaskResponse {
   groupId: number | null;
   /** Set when the task belongs to an archived branch; active tasks carry null. */
   archiveId: number | null;
+  /** Parent task when this one is a subtask; top-level tasks carry null. One level only. */
+  parentId: number | null;
 }
 
 /** GET /api/v1/suggest/tasks/{projectId}/time → TaskResponse with calculatedTime populated. */
@@ -103,6 +105,12 @@ export interface TaskRequest {
   importance: number;
   /** Optional group; null clears the assignment. */
   groupId: number | null;
+  /**
+   * Attach as a subtask of this task; null detaches (and is the default).
+   * The backend validates: same project, parent isn't itself a subtask, not
+   * COMPLETED/archived, and the task has no subtasks or outside edges of its own.
+   */
+  parentId: number | null;
 }
 
 /** GET /api/graph/tasks/all/{projectId} → nodes. */
@@ -114,6 +122,9 @@ export interface GraphNode {
   isBlocked: boolean;
   /** How many tasks (transitively) this one unlocks via strict prerequisites. */
   influence: number;
+  /** Subtasks hidden under this node — the graph never lists them as nodes of their own. */
+  subtaskCount: number;
+  completedSubtaskCount: number;
 }
 
 /** Graph edges (source = prerequisite, target = dependent). */
@@ -166,6 +177,14 @@ export interface Task {
   updatedAt: string | null;
   completedAt: string | null;
   groupId: number | null;
+  /** Parent task id when this is a subtask; top-level tasks carry null. */
+  parentId: number | null;
+}
+
+/** How far a parent task's subtasks have got — derived from the task list. */
+export interface SubtaskStats {
+  total: number;
+  completed: number;
 }
 
 export const STATUS_LABEL: Record<TaskStatus, string> = {

@@ -1,23 +1,31 @@
 /* ============================================================
-   Task Manager — plain, no-frills UI.
+   Task Manager — a calm, modern work tool.
    Light theme by default, dark theme via [data-theme="dark"].
+
+   Tokens only below: every colour, step of spacing and elevation used
+   anywhere in the app resolves to one of these, so both themes and the
+   whole visual language move from this one block.
    ============================================================ */
 :root {
-  --bg: #f4f5f7;
+  --bg: #f6f7f9;
   --surface: #ffffff;
-  --surface-2: #f0f2f4;
-  --border: #dfe3e8;
-  --border-strong: #c6ccd4;
+  --surface-2: #f1f3f5;
+  --surface-3: #e9ecf0;
+  --border: #e3e7ec;
+  --border-strong: #c8cfd8;
 
-  --text: #24292f;
-  --text-dim: #57606a;
-  --text-faint: #8b949e;
+  /* Text ramp — `text` on `surface` is 15.9:1, `text-dim` 7.2:1, all AA+. */
+  --text: #16191d;
+  --text-dim: #545d6a;
+  --text-faint: #838c98;
 
   --primary: #2563eb;
   --primary-hover: #1d4ed8;
-  --primary-soft: #e8effd;
+  --primary-soft: #eaf1fe;
+  --primary-ring: rgba(37, 99, 235, 0.28);
   --success: #16a34a;
   --success-hover: #15803d;
+  --success-soft: #e7f6ec;
   --danger: #dc2626;
   --danger-soft: #fdecec;
 
@@ -29,51 +37,91 @@
   --expired: #be123c;
   --expired-soft: #fdeef2;
 
+  /* Importance accents — only the top two steps earn a colour of their own. */
+  --imp-high: #d97706;
+  --imp-critical: #dc2626;
+  --imp-critical-soft: #fdecec;
+
   --edge: #b3bac2;
   --influence: #b3541e;
   --inf-open: #b3541e;
   --inf-done: #15803d;
 
+  /* Spacing — 8pt grid, halved at the small end for dense chrome. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* Type scale */
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-base: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+
   --radius: 8px;
   --radius-sm: 6px;
-  --shadow: 0 1px 3px rgba(20, 24, 30, 0.08);
-  --shadow-lg: 0 8px 30px rgba(20, 24, 30, 0.16);
+  --radius-lg: 12px;
+
+  /* Layered elevation: a hairline contact shadow under a soft ambient one. */
+  --shadow-sm: 0 1px 2px rgba(16, 22, 32, 0.06);
+  --shadow: 0 1px 2px rgba(16, 22, 32, 0.06), 0 2px 8px rgba(16, 22, 32, 0.06);
+  --shadow-md: 0 2px 4px rgba(16, 22, 32, 0.07), 0 8px 20px rgba(16, 22, 32, 0.09);
+  --shadow-lg: 0 4px 8px rgba(16, 22, 32, 0.08), 0 16px 40px rgba(16, 22, 32, 0.16);
+
+  --focus-ring: 0 0 0 3px var(--primary-ring);
+  --speed: 0.15s;
 }
 
 [data-theme='dark'] {
-  --bg: #16181d;
-  --surface: #1e2126;
-  --surface-2: #24282e;
-  --border: #31363d;
-  --border-strong: #444b54;
+  --bg: #0f1116;
+  --surface: #171a20;
+  --surface-2: #1d212a;
+  --surface-3: #252b35;
+  --border: #282e39;
+  --border-strong: #3d4552;
 
-  --text: #e6e8ea;
-  --text-dim: #9aa3ad;
-  --text-faint: #6e7680;
+  --text: #e9ecf1;
+  --text-dim: #a0a9b6;
+  --text-faint: #727c8a;
 
-  --primary: #3b82f6;
-  --primary-hover: #60a5fa;
-  --primary-soft: #1d2a44;
+  --primary: #4b8bf8;
+  --primary-hover: #6fa4fa;
+  --primary-soft: #182742;
+  --primary-ring: rgba(75, 139, 248, 0.32);
   --success: #22c55e;
   --success-hover: #4ade80;
+  --success-soft: #14301f;
   --danger: #ef4444;
   --danger-soft: #3a2223;
 
   --todo: #8b949e;
-  --progress: #3b82f6;
+  --progress: #4b8bf8;
   --done: #22c55e;
   --blocked: #f59e0b;
   --blocked-soft: #37301f;
   --expired: #fb7185;
   --expired-soft: #3a2229;
 
+  --imp-high: #f59e0b;
+  --imp-critical: #f87171;
+  --imp-critical-soft: #3a2223;
+
   --edge: #4b535c;
   --influence: #e0763f;
   --inf-open: #e0763f;
   --inf-done: #34c47c;
 
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.5);
+  /* Dark UI reads depth from light, not shadow — keep these shallow. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.55), 0 10px 24px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 4px 10px rgba(0, 0, 0, 0.6), 0 18px 44px rgba(0, 0, 0, 0.55);
 }
 
 * { box-sizing: border-box; }
@@ -296,11 +344,16 @@ h1, h2, h3, p { margin: 0; }
 }
 .btn:active:not(:disabled) { transform: scale(0.97); }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+/* Keyboard focus is visible on every control; pointer clicks stay clean. */
+.btn:focus-visible,
+.iconbtn:focus-visible,
+.seg__btn:focus-visible,
+.prio__btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
-.btn--primary { background: var(--primary); color: #fff; }
+.btn--primary { background: var(--primary); color: #fff; box-shadow: var(--shadow-sm); }
 .btn--primary:hover:not(:disabled) { background: var(--primary-hover); }
 
-.btn--success { background: var(--success); color: #fff; }
+.btn--success { background: var(--success); color: #fff; box-shadow: var(--shadow-sm); }
 .btn--success:hover:not(:disabled) { background: var(--success-hover); }
 
 .btn--danger { background: var(--danger); color: #fff; }
@@ -474,10 +527,10 @@ h1, h2, h3, p { margin: 0; }
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 10px;
+  padding: var(--sp-3);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-3);
 }
 
 .col-empty {
@@ -486,34 +539,87 @@ h1, h2, h3, p { margin: 0; }
   padding: 20px 0;
 }
 
-/* Task card */
+/* ------------------------------------------------------------
+   Task card
+
+   Reading order is deliberate: the rail and the top row carry state
+   (blocked / priority / status), the title is the loudest text, and
+   everything below it is progressively quieter support.
+   ------------------------------------------------------------ */
 .card {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 12px;
+  padding: var(--sp-4) var(--sp-4) var(--sp-4) var(--sp-5);
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  /* The column is a flex box that scrolls; without this cards would shrink to
+     fit and `overflow: hidden` would crop their content instead. */
+  flex-shrink: 0;
+  overflow: hidden;
+  transition: border-color var(--speed), box-shadow var(--speed), transform var(--speed);
   animation: rise 0.2s ease both;
 }
+
+/* The rail states the card's single loudest fact — a blocker outranks
+   priority, priority outranks plain status. Colour comes from --rail. */
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--rail, transparent);
+}
+.card--rail-todo { --rail: var(--todo); }
+.card--rail-in_progress { --rail: var(--progress); }
+.card--rail-completed { --rail: var(--done); }
+.card--rail-expired { --rail: var(--expired); }
+.card--rail-blocked { --rail: var(--blocked); }
+.card--rail-imp-4 { --rail: var(--imp-high); }
+.card--rail-imp-5 { --rail: var(--imp-critical); }
+
 .card:hover { border-color: var(--border-strong); box-shadow: var(--shadow); transform: translateY(-1px); }
-.card--active { border-color: var(--primary); }
-.card--blocked { background: var(--blocked-soft); }
+.card:focus-visible { outline: none; border-color: var(--primary); box-shadow: var(--focus-ring); }
+.card--active { border-color: var(--primary); box-shadow: var(--focus-ring); }
+/* State is carried by the rail and the chips — a filled card body on top of
+   those turns a column of blocked work into a wall of colour, so the surface
+   stays neutral and only the accents speak. */
+.card--blocked,
+.card--urgent { background: var(--surface); }
+
+/* Finished work recedes without disappearing, and stops advertising its
+   priority — importance only matters for work still ahead of you. */
+.card--done { opacity: 0.72; }
+.card--done:hover { opacity: 1; }
+.card--done .card__title { color: var(--text-dim); }
+.card--done .chip--imp-4,
+.card--done .chip--imp-5 {
+  color: var(--text-dim);
+  border-color: var(--border);
+  background: var(--surface);
+  font-weight: 400;
+}
 
 .card__top {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-2);
   flex-wrap: wrap;
-  margin-bottom: 8px;
+  margin-bottom: var(--sp-3);
 }
 
-.card__title { font-size: 14px; font-weight: 600; }
+.card__title {
+  font-size: var(--fs-base);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.4;
+}
 
 .card__desc {
-  margin-top: 4px;
+  margin-top: var(--sp-2);
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-md);
+  line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -522,10 +628,12 @@ h1, h2, h3, p { margin: 0; }
 
 .card__meta {
   display: flex;
-  gap: 12px;
-  margin-top: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  margin-top: var(--sp-3);
   color: var(--text-faint);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .meta { display: inline-flex; align-items: center; gap: 4px; }
@@ -535,8 +643,8 @@ h1, h2, h3, p { margin: 0; }
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 6px;
-  font-size: 12px;
+  margin-top: var(--sp-2);
+  font-size: var(--fs-sm);
   min-width: 0;
 }
 .card__rel svg { flex-shrink: 0; }
@@ -544,7 +652,152 @@ h1, h2, h3, p { margin: 0; }
 .card__rel--wait { color: var(--blocked); }
 .card__rel--open { color: var(--success); }
 
-.card__actions { margin-top: 10px; }
+.card__actions { margin-top: var(--sp-4); }
+
+/* ------------------------------------------------------------
+   Subtask progress — how far the work underneath a parent has got.
+   ------------------------------------------------------------ */
+.subprog {
+  margin-top: var(--sp-3);
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+/* Inside the drawer the section header already says "Subtasks", so the block
+   sheds its frame, its title and all its padding — it's just the gauge. */
+.subprog--bare {
+  margin-top: 0;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.subprog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: 5px;
+}
+.subprog--bare .subprog__head { margin-bottom: var(--sp-1); }
+
+.subprog__title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.subprog__count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-left: auto;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.subprog__of { color: var(--text-faint); font-weight: 400; }
+
+.subprog__track {
+  display: block;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.subprog__fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--progress);
+  transition: width 0.25s ease;
+}
+.subprog.is-complete .subprog__fill { background: var(--done); }
+.subprog.is-complete .subprog__count { color: var(--done); }
+
+/* ------------------------------------------------------------
+   Subtask list in the drawer — a row per subtask, plus the sibling
+   links between them, which exist nowhere else in the UI.
+   ------------------------------------------------------------ */
+.sublist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: var(--sp-2);
+}
+
+.subrow {
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color var(--speed), background-color var(--speed);
+}
+.subrow:hover { border-color: var(--border-strong); background: var(--surface-2); }
+
+.subrow__main {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.subrow__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subrow__h { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+
+/* "after Export legacy pages" — what this subtask waits on. */
+.subrow__wait {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-top: var(--sp-1);
+  padding-left: calc(8px + var(--sp-2));
+  color: var(--blocked);
+  font-size: var(--fs-xs);
+  min-width: 0;
+}
+.subrow__wait-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The drawer's link back up to the parent task. */
+.drawer__parent {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  margin-bottom: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  text-align: left;
+  transition: border-color var(--speed), color var(--speed);
+}
+.drawer__parent:hover { border-color: var(--border-strong); color: var(--text); }
+.drawer__parent:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.drawer__parent-label { flex-shrink: 0; color: var(--text-faint); }
+.drawer__parent-title {
+  font-weight: 600;
+  color: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* Status pieces */
 .status-dot {
@@ -589,16 +842,39 @@ h1, h2, h3, p { margin: 0; }
 }
 .chip--blocked { color: var(--blocked); border-color: var(--blocked); background: var(--blocked-soft); }
 .chip--muted { color: var(--text-faint); }
+/* "part of <parent>" marker — capped so a long parent title can't push the
+   rest of a plan row off the end. */
+.chip--subtask {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 180px;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .chip--xs { font-size: 11px; padding: 0 6px; }
 /* Relation markers in dependency lists: what closes this task vs what it opens. */
 .chip--rel-wait { color: var(--blocked); border-color: var(--blocked); }
 .chip--rel-open { color: var(--success); border-color: var(--success); }
 
-/* Importance chips: quiet when low, louder as it climbs */
+/* Importance chips: quiet when low, louder as it climbs. Only the top two
+   steps get a colour, so "Critical" never has to compete with "Normal". */
 .chip--imp-0 { color: var(--text-faint); border-style: dashed; }
 .chip--imp-1, .chip--imp-2, .chip--imp-3 { color: var(--text-dim); }
-.chip--imp-4 { color: var(--blocked); border-color: var(--blocked); }
-.chip--imp-5 { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }
+.chip--imp-4 {
+  color: var(--imp-high);
+  border-color: color-mix(in srgb, var(--imp-high) 45%, transparent);
+  background: var(--blocked-soft);
+  font-weight: 600;
+}
+.chip--imp-5 {
+  color: var(--imp-critical);
+  border-color: color-mix(in srgb, var(--imp-critical) 55%, transparent);
+  background: var(--imp-critical-soft);
+  font-weight: 600;
+}
 
 .done-pill {
   display: inline-flex;
@@ -693,8 +969,13 @@ h1, h2, h3, p { margin: 0; }
 
 .drawer__section {
   border-top: 1px solid var(--border);
-  padding: 14px 0;
+  padding: var(--sp-4) 0;
 }
+
+/* Anything that follows a list inside a section — "Add subtask", the
+   prerequisite picker, a hint — needs air, or it reads as another row. */
+.drawer__action,
+.drawer__section > .hint { margin-top: var(--sp-3); }
 
 .drawer__label {
   font-size: 12px;
@@ -743,13 +1024,13 @@ h1, h2, h3, p { margin: 0; }
 }
 .effort__val { margin-top: 2px; }
 
-.deplist { display: flex; flex-direction: column; gap: 4px; }
+.deplist { display: flex; flex-direction: column; gap: 6px; }
 
 .deprow {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 10px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -927,7 +1208,7 @@ h1, h2, h3, p { margin: 0; }
   outline: none;
 }
 .input::placeholder { color: var(--text-faint); }
-.input:focus { border-color: var(--primary); }
+.input:focus { outline: none; border-color: var(--primary); box-shadow: var(--focus-ring); }
 .input--sm { padding: 6px 10px; }
 
 .textarea { resize: vertical; min-height: 70px; }
@@ -1174,8 +1455,85 @@ h1, h2, h3, p { margin: 0; }
 }
 
 /* Importance accent inside the node's meta line */
-.gnode__imp--4 { fill: var(--blocked); font-weight: 600; }
-.gnode__imp--5 { fill: var(--danger); font-weight: 600; }
+.gnode__imp--4 { fill: var(--imp-high); font-weight: 600; }
+.gnode__imp--5 { fill: var(--imp-critical); font-weight: 600; }
+
+/* Subtask chip on the node: the count, and the handle that opens the cluster. */
+.gnode__subchip { cursor: pointer; }
+.gnode__subchip-hit { fill: transparent; }
+.gnode__subchip-bg {
+  fill: var(--surface-2);
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+.gnode__subchip-icon { fill: none; stroke: var(--text-dim); stroke-width: 1.4; stroke-linejoin: round; }
+.gnode__subchip-label {
+  fill: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  text-anchor: middle;
+  user-select: none;
+  pointer-events: none;
+}
+.gnode__subchip:hover .gnode__subchip-bg { stroke: var(--primary); }
+.gnode__subchip.is-open .gnode__subchip-bg { fill: var(--primary); stroke: var(--primary); }
+.gnode__subchip.is-open .gnode__subchip-label { fill: #fff; }
+.gnode__subchip.is-open .gnode__subchip-icon { stroke: #fff; }
+
+/* The card peeking out behind a node that has subtasks. */
+.gnode__substack {
+  fill: var(--surface);
+  stroke: var(--border-strong);
+  stroke-width: 1.5;
+}
+
+/* ------------------------------------------------------------
+   Expanded subtask cluster on the graph
+   ------------------------------------------------------------ */
+.subcluster__tether {
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 4;
+  stroke-linecap: round;
+}
+
+.subnode { cursor: pointer; }
+
+.subnode__box {
+  fill: var(--surface);
+  stroke: var(--border-strong);
+  stroke-width: 1.5;
+  filter: drop-shadow(0 2px 6px rgba(16, 22, 32, 0.12));
+}
+.subnode--todo .subnode__dot { fill: var(--todo); }
+.subnode--in_progress .subnode__dot { fill: var(--progress); }
+.subnode--completed .subnode__dot { fill: var(--done); }
+.subnode--expired .subnode__dot { fill: var(--expired); }
+.subnode--blocked .subnode__box { stroke: var(--blocked); }
+/* Finished subtasks recede — the green dot is enough. Outlining them would
+   make the done ones the loudest cards in the cluster. Muted via colour, not
+   opacity: these sit over a dimmed graph and must stay opaque. */
+.subnode--completed .subnode__box { stroke: var(--border); fill: var(--surface-2); }
+.subnode--completed .subnode__title { fill: var(--text-dim); font-weight: 500; }
+.subnode.is-selected .subnode__box { stroke: var(--primary); stroke-width: 2.5; }
+.subnode:hover .subnode__box { stroke: var(--primary); }
+
+.subnode__title {
+  fill: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  user-select: none;
+  pointer-events: none;
+}
+
+.subnode__sub {
+  fill: var(--text-faint);
+  font-size: 11px;
+  user-select: none;
+  pointer-events: none;
+}
+.subnode__blocked { fill: var(--blocked); font-weight: 600; }
 
 /* Fullscreen board — a fixed overlay below the drawer/modals, so the task
    panel still opens on top and Esc / the toolbar button lead back out. */

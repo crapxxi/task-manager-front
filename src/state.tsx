@@ -16,6 +16,7 @@ import type {
   Project,
   ProjectRequest,
   RegisterRequest,
+  SubtaskStats,
   Task,
   TaskGraph,
   TaskGroup,
@@ -281,8 +282,20 @@ export const useProjects = () => {
    ============================================================ */
 interface TasksCtx {
   status: LoadStatus;
+  /**
+   * Top-level tasks only. Subtasks are deliberately absent: the backend keeps
+   * them off the graph and folds them under their parent, so every view that
+   * iterates tasks (board, graph, roadmap, stats) inherits that rule for free.
+   */
   tasks: Task[];
+  /** Every active task including subtasks — for lookups and subtask panels. */
+  allTasks: Task[];
+  /** Covers subtasks too, so selecting one from a parent's panel resolves. */
   byId: Map<number, Task>;
+  /** Subtasks of a parent, in creation order. */
+  subtasksOf: (parentId: number) => Task[];
+  /** Completed/total per parent id; absent for tasks that have no subtasks. */
+  subtaskStats: Map<number, SubtaskStats>;
   edges: GraphEdge[];
   groups: TaskGroup[];
   reload: () => Promise<void>;
@@ -304,6 +317,8 @@ interface TasksCtx {
   renameGroup: (id: number, title: string) => Promise<boolean>;
   removeGroup: (id: number) => Promise<boolean>;
   setTaskGroup: (taskId: number, groupId: number | null) => Promise<boolean>;
+  /** Attach a task under a parent, or pass null to detach it back to top level. */
+  setTaskParent: (taskId: number, parentId: number | null) => Promise<boolean>;
   assignToGroup: (groupId: number, taskIds: number[]) => Promise<boolean>;
   /** Create a group and put the given tasks in it — one flow, one toast. */
   groupTasks: (title: string, taskIds: number[]) => Promise<boolean>;
@@ -329,7 +344,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   const { push } = useToast();
   const { currentId } = useProjects();
   const [status, setStatus] = useState<LoadStatus>('loading');
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [edges, setEdges] = useState<GraphEdge[]>([]);
   const [groups, setGroups] = useState<TaskGroup[]>([]);
   const [archives, setArchives] = useState<GraphArchive[]>([]);
@@ -338,7 +353,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
 
   const reload = useCallback(async () => {
     if (currentId == null) {
-      setTasks([]);
+      setAllTasks([]);
       setEdges([]);
       setGroups([]);
       setArchives([]);
@@ -362,7 +377,9 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       ]);
       // The list endpoint returns archived tasks too — only active ones belong
       // on the board; archived branches live behind the graph's History panel.
-      setTasks(list.filter((t) => t.archiveId == null).map((t) => ({
+      // Subtasks arrive in this list too (tagged by parentId) — they're split
+      // out of `tasks` below rather than dropped, so panels can still show them.
+      setAllTasks(list.filter((t) => t.archiveId == null).map((t) => ({
         id: t.id,
         title: t.title,
         description: t.description ?? '',
@@ -375,6 +392,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
         updatedAt: t.updatedAt ?? null,
         completedAt: t.completedAt ?? null,
         groupId: t.groupId ?? null,
+        parentId: t.parentId ?? null,
       })));
       setEdges(graph.edges);
       setGroups(groupList);
@@ -394,7 +412,37 @@ export function TasksProvider({ children }: { children: ReactNode }) {
     void reload();
   }, [reload]);
 
-  const byId = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
+  const byId = useMemo(() => new Map(allTasks.map((t) => [t.id, t])), [allTasks]);
+  const tasks = useMemo(() => allTasks.filter((t) => t.parentId == null), [allTasks]);
+
+  // One pass over the list builds both the parent → children index and the
+  // completed/total counters the cards and graph nodes render.
+  const subtasksByParent = useMemo(() => {
+    const map = new Map<number, Task[]>();
+    for (const t of allTasks) {
+      if (t.parentId == null) continue;
+      const arr = map.get(t.parentId);
+      if (arr) arr.push(t);
+      else map.set(t.parentId, [t]);
+    }
+    return map;
+  }, [allTasks]);
+
+  const subtaskStats = useMemo(() => {
+    const map = new Map<number, SubtaskStats>();
+    for (const [parentId, children] of subtasksByParent) {
+      map.set(parentId, {
+        total: children.length,
+        completed: children.filter((c) => c.status === 'COMPLETED').length,
+      });
+    }
+    return map;
+  }, [subtasksByParent]);
+
+  const subtasksOf = useCallback(
+    (parentId: number) => subtasksByParent.get(parentId) ?? [],
+    [subtasksByParent],
+  );
 
   const prerequisitesOf = useCallback(
     (id: number) => edges.filter((e) => e.targetId === id).map((e) => byId.get(e.sourceId)).filter((t): t is Task => !!t),
@@ -526,21 +574,40 @@ export function TasksProvider({ children }: { children: ReactNode }) {
     (groupId: number, taskIds: number[]) => run(() => api.assignToGroup(groupId, taskIds), 'Tasks added to group'),
     [run],
   );
-  // The update endpoint expects the full body, so rebuild it from the cached task.
-  const setTaskGroup = useCallback((taskId: number, groupId: number | null) => {
-    const t = byId.get(taskId);
-    if (!t || currentId == null) return Promise.resolve(false);
-    const body: TaskRequest = {
+  // The update endpoint replaces the whole task, so single-field edits rebuild
+  // the full body from the cached copy. Every field must be carried over —
+  // omitting parentId here would silently detach a subtask on a group change.
+  const bodyFor = useCallback((t: Task, patch: Partial<TaskRequest>): TaskRequest | null => {
+    if (currentId == null) return null;
+    return {
       projectId: currentId,
       title: t.title,
       description: t.description || null,
       durationHours: t.durationHours,
       complexity: t.complexity,
       importance: t.importance,
-      groupId,
+      groupId: t.groupId,
+      parentId: t.parentId,
+      ...patch,
     };
+  }, [currentId]);
+
+  const setTaskGroup = useCallback((taskId: number, groupId: number | null) => {
+    const t = byId.get(taskId);
+    const body = t ? bodyFor(t, { groupId }) : null;
+    if (!body) return Promise.resolve(false);
     return run(() => api.updateTask(taskId, body), groupId == null ? 'Removed from group' : 'Moved to group');
-  }, [run, byId, currentId]);
+  }, [run, byId, bodyFor]);
+
+  const setTaskParent = useCallback((taskId: number, parentId: number | null) => {
+    const t = byId.get(taskId);
+    const body = t ? bodyFor(t, { parentId }) : null;
+    if (!body) return Promise.resolve(false);
+    return run(
+      () => api.updateTask(taskId, body),
+      parentId == null ? 'Moved out of its parent task' : 'Turned into a subtask',
+    );
+  }, [run, byId, bodyFor]);
 
   // Appends the next page; a page already carries archives created since the
   // first load, so rows are de-duplicated by id before appending.
@@ -574,16 +641,18 @@ export function TasksProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<TasksCtx>(
     () => ({
-      status, tasks, byId, edges, groups, reload, prerequisitesOf, dependentsOf, descendants,
+      status, tasks, allTasks, byId, subtasksOf, subtaskStats,
+      edges, groups, reload, prerequisitesOf, dependentsOf, descendants,
       strictDescendants, influenceById,
       create, update, remove, bind, unbind, changeBindType, toggle,
-      createGroup, renameGroup, removeGroup, setTaskGroup, assignToGroup, groupTasks,
+      createGroup, renameGroup, removeGroup, setTaskGroup, setTaskParent, assignToGroup, groupTasks,
       archives, archivesTotal, loadMoreArchives, archiveBranch, restoreArchive, fetchArchiveGraph,
     }),
-    [status, tasks, byId, edges, groups, reload, prerequisitesOf, dependentsOf, descendants,
+    [status, tasks, allTasks, byId, subtasksOf, subtaskStats,
+      edges, groups, reload, prerequisitesOf, dependentsOf, descendants,
       strictDescendants, influenceById,
       create, update, remove, bind, unbind, changeBindType, toggle,
-      createGroup, renameGroup, removeGroup, setTaskGroup, assignToGroup, groupTasks,
+      createGroup, renameGroup, removeGroup, setTaskGroup, setTaskParent, assignToGroup, groupTasks,
       archives, archivesTotal, loadMoreArchives, archiveBranch, restoreArchive, fetchArchiveGraph],
   );
   return <TasksContext.Provider value={value}>{children}</TasksContext.Provider>;
@@ -612,8 +681,9 @@ interface UICtx {
   focusBranch: (id: number | null) => void;
   search: string;
   setSearch: (s: string) => void;
-  form: { task: Task | null } | null;
-  openCreate: () => void;
+  /** `parentId` pre-selects a parent when creating (the "Add subtask" path). */
+  form: { task: Task | null; parentId: number | null } | null;
+  openCreate: (parentId?: number | null) => void;
   openEdit: (task: Task) => void;
   closeForm: () => void;
   projectForm: { project: Project | null } | null;
@@ -631,7 +701,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [branchRoot, setBranchRoot] = useState<number | null>(null);
   const [search, setSearch] = useState('');
-  const [form, setForm] = useState<{ task: Task | null } | null>(null);
+  const [form, setForm] = useState<{ task: Task | null; parentId: number | null } | null>(null);
   const [projectForm, setProjectForm] = useState<{ project: Project | null } | null>(null);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
 
@@ -639,8 +709,8 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const select = useCallback((id: number) => setSelectedId(id), []);
   const clearSelection = useCallback(() => setSelectedId(null), []);
   const focusBranch = useCallback((id: number | null) => setBranchRoot(id), []);
-  const openCreate = useCallback(() => setForm({ task: null }), []);
-  const openEdit = useCallback((task: Task) => setForm({ task }), []);
+  const openCreate = useCallback((parentId: number | null = null) => setForm({ task: null, parentId }), []);
+  const openEdit = useCallback((task: Task) => setForm({ task, parentId: task.parentId }), []);
   const closeForm = useCallback(() => setForm(null), []);
   const openCreateProject = useCallback(() => setProjectForm({ project: null }), []);
   const openEditProject = useCallback((project: Project) => setProjectForm({ project }), []);

@@ -108,6 +108,9 @@ export function PlanView() {
         {rows.map((row) => {
           const live = byId.get(row.id);
           const blocked = live?.isBlocked ?? row.isBlocked;
+          // The suggest endpoint returns subtasks alongside top-level tasks, and
+          // a bare title gives no hint which is which — name the parent.
+          const parent = row.parentId != null ? byId.get(row.parentId) : undefined;
           return (
             <li key={row.id}>
               <button
@@ -117,6 +120,12 @@ export function PlanView() {
                 <span className="planrow__num">{row.position}</span>
                 <StatusDot status={row.status} />
                 <span className="planrow__title">{row.title}</span>
+                {parent && (
+                  <span className="chip chip--xs chip--subtask" title={`Subtask of “${parent.title}”`}>
+                    <Icon name="parent" />
+                    {parent.title}
+                  </span>
+                )}
                 {blocked && <span className="chip chip--blocked chip--xs">blocked</span>}
                 <ImportanceChip value={row.importance} />
                 <span className={`meta meta--cx-${row.complexity.toLowerCase()}`}>{COMPLEXITY_LABEL[row.complexity]}</span>

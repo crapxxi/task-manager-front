@@ -7,7 +7,7 @@ export function ModalHost() {
   const { form, projectForm, confirmRequest } = useUI();
   return (
     <>
-      {form && <TaskFormModal task={form.task} />}
+      {form && <TaskFormModal task={form.task} presetParentId={form.parentId} />}
       {projectForm && <ProjectFormModal project={projectForm.project} />}
       {confirmRequest && <ConfirmDialog />}
     </>
@@ -29,9 +29,9 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-function TaskFormModal({ task }: { task: Task | null }) {
+function TaskFormModal({ task, presetParentId }: { task: Task | null; presetParentId: number | null }) {
   const editing = !!task;
-  const { create, update, groups } = useTasks();
+  const { create, update, groups, tasks, subtaskStats, byId } = useTasks();
   const { closeForm } = useUI();
   const { push } = useToast();
 
@@ -41,8 +41,18 @@ function TaskFormModal({ task }: { task: Task | null }) {
   const [complexity, setComplexity] = useState<Complexity>(task?.complexity ?? 'MEDIUM');
   const [importance, setImportance] = useState(task?.importance ?? 0);
   const [groupId, setGroupId] = useState<number | null>(task?.groupId ?? null);
+  const [parentId, setParentId] = useState<number | null>(task ? task.parentId : presetParentId);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Nesting is one level deep, so a task that already has subtasks can never
+  // become one itself. Eligible parents are unfinished top-level tasks —
+  // `tasks` excludes subtasks already. Mirrors the backend's attach validation.
+  const canHaveParent = task == null || (subtaskStats.get(task.id)?.total ?? 0) === 0;
+  const parentOptions = canHaveParent
+    ? tasks.filter((p) => p.id !== task?.id && p.status !== 'COMPLETED')
+    : [];
+  const presetParent = presetParentId != null ? byId.get(presetParentId) : undefined;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -55,7 +65,7 @@ function TaskFormModal({ task }: { task: Task | null }) {
     if (!Number.isFinite(d) || !Number.isInteger(d) || d < 1 || d > 100) errors.push('Duration must be a whole number between 1 and 100 hours.');
     if (errors.length) { setErr(errors.join(' ')); return; }
 
-    const body = { title: t, description: description.trim() || null, durationHours: d, complexity, importance, groupId };
+    const body = { title: t, description: description.trim() || null, durationHours: d, complexity, importance, groupId, parentId };
     setSaving(true);
     setErr(null);
     try {
@@ -70,7 +80,10 @@ function TaskFormModal({ task }: { task: Task | null }) {
   }
 
   return (
-    <Modal title={editing ? 'Edit task' : 'New task'} onClose={closeForm}>
+    <Modal
+      title={editing ? 'Edit task' : presetParent ? `New subtask of “${presetParent.title}”` : 'New task'}
+      onClose={closeForm}
+    >
       <form className="form" onSubmit={submit}>
         <label className="field">
           <span className="field__label">Title<span className="field__req">required</span></span>
@@ -94,6 +107,22 @@ function TaskFormModal({ task }: { task: Task | null }) {
             onChange={(e) => setDescription(e.target.value)}
           />
         </label>
+        {(parentOptions.length > 0 || parentId != null) && (
+          <label className="field">
+            <span className="field__label">
+              Parent task
+              <span className="field__opt">hides this one under another and completes it automatically</span>
+            </span>
+            <select
+              className="input"
+              value={parentId ?? ''}
+              onChange={(e) => setParentId(e.target.value === '' ? null : Number(e.target.value))}
+            >
+              <option value="">No parent — top-level task</option>
+              {parentOptions.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+            </select>
+          </label>
+        )}
         <label className="field">
           <span className="field__label">Estimated effort (hours)<span className="field__req">required</span></span>
           <input

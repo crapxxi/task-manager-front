@@ -1,7 +1,7 @@
 import { Icon } from '../icons';
 import { useTasks, useUI } from '../state';
 import { COMPLEXITY_LABEL, STATUS_ORDER, type Task, type TaskStatus } from '../types';
-import { AdvanceButton, ConnectionError, EmptyState, ImportanceChip, LoadingState, StatusBadge } from './ui';
+import { AdvanceButton, ConnectionError, EmptyState, ImportanceChip, LoadingState, StatusBadge, SubtaskProgress } from './ui';
 
 const COLUMN_LABEL: Record<TaskStatus, string> = {
   TODO: 'To Do',
@@ -11,7 +11,7 @@ const COLUMN_LABEL: Record<TaskStatus, string> = {
 };
 
 export function BoardView() {
-  const { status, tasks } = useTasks();
+  const { status, tasks, subtasksOf } = useTasks();
   const { search } = useUI();
 
   if (status === 'loading') return <section className="view board"><LoadingState /></section>;
@@ -19,9 +19,9 @@ export function BoardView() {
   if (tasks.length === 0) return <section className="view board"><EmptyState /></section>;
 
   const q = search.trim().toLowerCase();
-  const filtered = tasks.filter(
-    (t) => !q || t.title.toLowerCase().includes(q) || t.description.toLowerCase().includes(q),
-  );
+  const hit = (t: Task) => t.title.toLowerCase().includes(q) || t.description.toLowerCase().includes(q);
+  // Subtasks have no cards of their own, so a match inside one surfaces its parent.
+  const filtered = tasks.filter((t) => !q || hit(t) || subtasksOf(t.id).some(hit));
 
   // The Expired column only appears once something actually expires.
   const columns: TaskStatus[] = tasks.some((t) => t.status === 'EXPIRED')
@@ -64,10 +64,11 @@ function nameList(tasks: Task[], shown = 2): string {
 }
 
 function TaskCard({ task }: { task: Task }) {
-  const { prerequisitesOf, dependentsOf, edges, byId } = useTasks();
+  const { prerequisitesOf, dependentsOf, edges, byId, subtaskStats } = useTasks();
   const { selectedId, select } = useUI();
   const pre = prerequisitesOf(task.id).length;
   const dep = dependentsOf(task.id).length;
+  const stats = subtaskStats.get(task.id);
 
   // The tasks keeping this one closed: unfinished strict prerequisites.
   const waitingFor = edges
@@ -84,9 +85,22 @@ function TaskCard({ task }: { task: Task }) {
       e.targetId === d.id && e.type === 'STRICT_PREREQUISITE' && e.sourceId !== task.id
       && (byId.get(e.sourceId)?.status ?? 'COMPLETED') !== 'COMPLETED'));
 
+  // The rail down the left edge carries the card's loudest fact: a blocker
+  // first, then high importance, otherwise just the status.
+  const rail = task.isBlocked ? 'blocked'
+    : task.importance >= 4 ? `imp-${task.importance}`
+    : task.status.toLowerCase();
+
   return (
     <article
-      className={`card ${task.isBlocked ? 'card--blocked' : ''} ${selectedId === task.id ? 'card--active' : ''}`}
+      className={[
+        'card',
+        `card--rail-${rail}`,
+        task.isBlocked ? 'card--blocked' : '',
+        task.importance >= 4 && !task.isBlocked ? 'card--urgent' : '',
+        task.status === 'COMPLETED' ? 'card--done' : '',
+        selectedId === task.id ? 'card--active' : '',
+      ].filter(Boolean).join(' ')}
       role="button"
       tabIndex={0}
       onClick={() => select(task.id)}
@@ -110,6 +124,7 @@ function TaskCard({ task }: { task: Task }) {
         {pre > 0 && <span className="meta" title="Prerequisites"><Icon name="link" />{pre}</span>}
         {dep > 0 && <span className="meta" title="Unlocks"><Icon name="unlocks" />{dep}</span>}
       </div>
+      {stats && <SubtaskProgress stats={stats} />}
       {task.status !== 'COMPLETED' && waitingFor.length > 0 && (
         <div className="card__rel card__rel--wait" title={`Waiting for: ${waitingFor.map((t) => t.title).join(', ')}`}>
           <Icon name="lock" />

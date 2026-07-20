@@ -30,6 +30,10 @@ const PATHS: Record<string, string> = {
   archive: '<rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>',
   influence: '<circle cx="5" cy="12" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="M7.1 11 16 6.6"/><path d="M7.1 13 16 17.4"/>',
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
+  /** Decomposition: a parent line branching into two checked children. */
+  subtasks: '<path d="M4 4v10a2 2 0 0 0 2 2h4"/><path d="M4 4v4"/><rect x="10" y="12" width="10" height="8" rx="2"/><path d="M13 16.2l1.6 1.6 3-3.2"/>',
+  /** Points back up to the parent task. */
+  parent: '<path d="M20 20v-10a2 2 0 0 0-2-2H8"/><path d="m12 4-4 4 4 4"/>',
 };
 
 export type IconName = keyof typeof PATHS;

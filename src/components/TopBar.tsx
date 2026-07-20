@@ -65,7 +65,7 @@ export function TopBar() {
         <button className="iconbtn" title="Edit project" onClick={() => openEditProject(current)}><Icon name="edit" /></button>
         <button className="iconbtn iconbtn--danger" title="Delete project" onClick={() => void onDeleteProject()}><Icon name="trash" /></button>
 
-        <button className="btn btn--primary" onClick={openCreate}>
+        <button className="btn btn--primary" onClick={() => openCreate()}>
           <Icon name="plus" />
           New task
         </button>

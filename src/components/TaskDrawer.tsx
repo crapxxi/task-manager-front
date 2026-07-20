@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Icon } from '../icons';
 import { api } from '../api';
 import { useTasks, useUI } from '../state';
-import { COMPLEXITY_LABEL, type DependencyType, type Task } from '../types';
-import { AdvanceButton, ImportanceChip, StatusBadge, StatusDot } from './ui';
+import { COMPLEXITY_LABEL, type DependencyType, type GraphEdge, type Task } from '../types';
+import { AdvanceButton, ImportanceChip, StatusBadge, StatusDot, SubtaskProgress } from './ui';
 
 export function TaskDrawer() {
   const { selectedId, clearSelection } = useUI();
@@ -31,10 +31,11 @@ export function TaskDrawer() {
 }
 
 function DrawerBody({ task }: { task: Task }) {
-  const { clearSelection, openEdit, confirm, focusBranch, setView } = useUI();
+  const { clearSelection, openEdit, confirm, focusBranch, setView, select } = useUI();
   const { prerequisitesOf, dependentsOf, remove, unbind, edges, byId } = useTasks();
   const prerequisites = prerequisitesOf(task.id);
   const dependents = dependentsOf(task.id);
+  const parent = task.parentId != null ? byId.get(task.parentId) : undefined;
 
   // Which prerequisites are actually keeping this task closed right now:
   // strict links whose source isn't completed yet.
@@ -75,6 +76,14 @@ function DrawerBody({ task }: { task: Task }) {
         <button className="iconbtn" title="Close" onClick={clearSelection}><Icon name="x" /></button>
       </div>
 
+      {parent && (
+        <button className="drawer__parent" onClick={() => select(parent.id)} title="Open the parent task">
+          <Icon name="parent" />
+          <span className="drawer__parent-label">Subtask of</span>
+          <span className="drawer__parent-title">{parent.title}</span>
+        </button>
+      )}
+
       <div className="drawer__badges">
         <StatusBadge status={task.status} />
         {task.isBlocked && <span className="chip chip--blocked"><Icon name="lock" />Blocked</span>}
@@ -103,6 +112,10 @@ function DrawerBody({ task }: { task: Task }) {
         </button>
         <button className="btn btn--ghost btn--danger" onClick={onDelete}><Icon name="trash" />Delete</button>
       </div>
+
+      {/* Directly under the actions: decomposition is the first thing you want
+          on a parent, and burying it below effort/group made it easy to miss. */}
+      <SubtaskSection task={task} />
 
       <EffortWidget task={task} />
 
@@ -244,7 +257,143 @@ function DepSection({ title, subtitle, rows, onRemove, chipFor, footer }: {
       ) : (
         <div className="muted small">None</div>
       )}
-      {footer}
+      {footer && <div className="drawer__action">{footer}</div>}
+    </div>
+  );
+}
+
+/**
+ * Sorts subtasks into an order they can actually be worked in: anything a
+ * sibling waits on comes first. Ties keep creation order, and a cycle (which
+ * the backend rejects, but be safe) leaves the remainder in creation order
+ * rather than dropping rows.
+ */
+function orderByDependency(subtasks: Task[], edges: GraphEdge[]): Task[] {
+  const ids = new Set(subtasks.map((s) => s.id));
+  const blockedBy = new Map<number, number>();
+  const unlocks = new Map<number, number[]>();
+  for (const s of subtasks) blockedBy.set(s.id, 0);
+  for (const e of edges) {
+    if (!ids.has(e.sourceId) || !ids.has(e.targetId)) continue;
+    blockedBy.set(e.targetId, (blockedBy.get(e.targetId) ?? 0) + 1);
+    const arr = unlocks.get(e.sourceId);
+    if (arr) arr.push(e.targetId);
+    else unlocks.set(e.sourceId, [e.targetId]);
+  }
+
+  const ready = subtasks.filter((s) => blockedBy.get(s.id) === 0);
+  const sorted: Task[] = [];
+  const placed = new Set<number>();
+  while (ready.length) {
+    const next = ready.shift()!;
+    if (placed.has(next.id)) continue;
+    sorted.push(next);
+    placed.add(next.id);
+    for (const id of unlocks.get(next.id) ?? []) {
+      blockedBy.set(id, (blockedBy.get(id) ?? 1) - 1);
+      const t = subtasks.find((s) => s.id === id);
+      if (t && blockedBy.get(id) === 0) ready.push(t);
+    }
+  }
+  return [...sorted, ...subtasks.filter((s) => !placed.has(s.id))];
+}
+
+/**
+ * Decomposition panel. Nesting is one level deep, so a task that already has a
+ * parent never shows this. The parent finishes on its own once the last subtask
+ * is done, which is why there's no "complete parent" affordance here.
+ */
+function SubtaskSection({ task }: { task: Task }) {
+  const { subtasksOf, subtaskStats, setTaskParent, edges, byId } = useTasks();
+  const { select, openCreate, confirm } = useUI();
+  const stats = subtaskStats.get(task.id);
+  const subtasks = useMemo(
+    () => orderByDependency(subtasksOf(task.id), edges),
+    [subtasksOf, task.id, edges],
+  );
+
+  // Subtasks may depend on each other, and those links are invisible unless
+  // they're spelled out here — the parent panel is where you look at the set
+  // as a whole. Each row names the siblings it's still waiting on.
+  const waitingOn = useMemo(() => {
+    const sibling = new Set(subtasks.map((s) => s.id));
+    const map = new Map<number, Task[]>();
+    for (const s of subtasks) {
+      const blockers = edges
+        .filter((e) => e.targetId === s.id && sibling.has(e.sourceId))
+        .map((e) => byId.get(e.sourceId))
+        .filter((p): p is Task => !!p && p.status !== 'COMPLETED');
+      if (blockers.length) map.set(s.id, blockers);
+    }
+    return map;
+  }, [subtasks, edges, byId]);
+
+  if (task.parentId != null) return null;
+
+  async function detach(sub: Task) {
+    const ok = await confirm({
+      title: 'Move out of parent',
+      message: `“${sub.title}” becomes a top-level task again. Links it has with the other subtasks are kept.`,
+      confirmLabel: 'Move out',
+    });
+    if (ok) void setTaskParent(sub.id, null);
+  }
+
+  return (
+    <div className="drawer__section">
+      <div className="drawer__label">
+        Subtasks
+        <span className="drawer__sublabel">This task completes once they all do</span>
+      </div>
+      {stats && <SubtaskProgress stats={stats} bare />}
+      {subtasks.length > 0 ? (
+        <div className="sublist">
+          {subtasks.map((s) => {
+            const blockers = waitingOn.get(s.id);
+            return (
+              <div key={s.id} className="subrow" onClick={() => select(s.id)}>
+                <div className="subrow__main">
+                  <StatusDot status={s.status} />
+                  <span className="subrow__title">{s.title}</span>
+                  {s.isBlocked && <span className="chip chip--blocked chip--xs">blocked</span>}
+                  <span className="muted subrow__h">{s.durationHours}h</span>
+                  <button
+                    className="iconbtn iconbtn--sm"
+                    title="Move out of this task"
+                    onClick={(e) => { e.stopPropagation(); void detach(s); }}
+                  >
+                    <Icon name="unlink" />
+                  </button>
+                </div>
+                {blockers && (
+                  <div className="subrow__wait" title={`Waiting for: ${blockers.map((b) => b.title).join(', ')}`}>
+                    <Icon name="lock" />
+                    <span className="subrow__wait-text">after {blockers.map((b) => b.title).join(', ')}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="muted small">None — break this task down if it’s too big to do in one go.</div>
+      )}
+      {task.status !== 'COMPLETED' && (
+        <div className="drawer__action">
+          <button className="btn btn--ghost btn--sm" onClick={() => openCreate(task.id)}>
+            <Icon name="plus" />
+            Add subtask
+          </button>
+        </div>
+      )}
+      {/* Only worth saying while there's nothing to see — once links exist the
+          "after …" rows explain themselves. */}
+      {subtasks.length > 1 && waitingOn.size === 0 && (
+        <div className="hint">
+          <Icon name="info" />
+          Subtasks can wait on each other — open one and add a prerequisite.
+        </div>
+      )}
     </div>
   );
 }
@@ -277,7 +426,7 @@ function GroupSection({ task }: { task: Task }) {
 }
 
 function AddPrerequisite({ task }: { task: Task }) {
-  const { tasks, prerequisitesOf, descendants, bind } = useTasks();
+  const { tasks, subtasksOf, prerequisitesOf, descendants, bind } = useTasks();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [type, setType] = useState<DependencyType>('STRICT_PREREQUISITE');
@@ -293,9 +442,13 @@ function AddPrerequisite({ task }: { task: Task }) {
 
   const existing = new Set(prerequisitesOf(task.id).map((p) => p.id));
   const wouldCycle = descendants(task.id); // adding any of these as a parent makes a loop
+  // Links may only join tasks at the same level: two top-level tasks, or two
+  // subtasks of the same parent. The backend rejects subtask↔outside and
+  // subtask↔its own parent, so those never reach the picker.
+  const pool = task.parentId != null ? subtasksOf(task.parentId) : tasks;
   // An expired task can never be completed, so requiring it would block this
   // task forever; it can still be attached as a non-blocking optional link.
-  const candidates = tasks.filter((c) =>
+  const candidates = pool.filter((c) =>
     c.id !== task.id && !existing.has(c.id) && !wouldCycle.has(c.id) &&
     (type === 'OPTIONAL_LINK' || c.status !== 'EXPIRED'));
   const q = query.trim().toLowerCase();
@@ -354,7 +507,9 @@ function AddPrerequisite({ task }: { task: Task }) {
               ))
             ) : (
               <div className="picker__empty muted">
-                {candidates.length ? 'No matches.' : 'No eligible tasks available.'}
+                {candidates.length ? 'No matches.'
+                  : task.parentId != null ? 'A subtask can only wait on its siblings.'
+                  : 'No eligible tasks available.'}
               </div>
             )}
           </div>
