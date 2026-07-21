@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useTasks, useUI } from '../state';
 import { COMPLEXITY_LABEL, type DependencyType, type GraphEdge, type Task } from '../types';
 import { AdvanceButton, ImportanceChip, StatusBadge, StatusDot, SubtaskProgress } from './ui';
+import { DAY_MINUTES, formatDuration } from '../lib/duration';
 
 export function TaskDrawer() {
   const { selectedId, clearSelection } = useUI();
@@ -87,7 +88,7 @@ function DrawerBody({ task }: { task: Task }) {
       <div className="drawer__badges">
         <StatusBadge status={task.status} />
         {task.isBlocked && <span className="chip chip--blocked"><Icon name="lock" />Blocked</span>}
-        <span className="chip"><Icon name="clock" />{task.durationHours}h</span>
+        <span className="chip"><Icon name="clock" />{formatDuration(task.durationMinutes)}</span>
         <span className={`chip chip--cx-${task.complexity.toLowerCase()}`}>{COMPLEXITY_LABEL[task.complexity]}</span>
         <ImportanceChip value={task.importance} />
         <span className="chip chip--muted">#{task.id}</span>
@@ -172,7 +173,7 @@ function formatDateTime(iso: string | null): string | null {
 type EffortState =
   | { kind: 'idle' }
   | { kind: 'loading' }
-  | { kind: 'ok'; hours: number }
+  | { kind: 'ok'; minutes: number }
   | { kind: 'error'; message: string };
 
 function EffortWidget({ task }: { task: Task }) {
@@ -181,7 +182,7 @@ function EffortWidget({ task }: { task: Task }) {
   async function calc() {
     setState({ kind: 'loading' });
     try {
-      setState({ kind: 'ok', hours: await api.calcDuration(task.id) });
+      setState({ kind: 'ok', minutes: await api.calcDuration(task.id) });
     } catch (e) {
       setState({ kind: 'error', message: (e as Error).message });
     }
@@ -196,7 +197,7 @@ function EffortWidget({ task }: { task: Task }) {
             {state.kind === 'idle' && 'Not calculated yet'}
             {state.kind === 'loading' && 'Calculating…'}
             {state.kind === 'error' && <span className="danger">{state.message}</span>}
-            {state.kind === 'ok' && <EffortResult hours={state.hours} />}
+            {state.kind === 'ok' && <EffortResult minutes={state.minutes} />}
           </div>
         </div>
         <button className="btn btn--ghost btn--sm" onClick={calc}><Icon name="sum" />Calculate</button>
@@ -205,12 +206,12 @@ function EffortWidget({ task }: { task: Task }) {
   );
 }
 
-function EffortResult({ hours }: { hours: number }) {
-  const days = hours / 8;
+function EffortResult({ minutes }: { minutes: number }) {
+  const days = minutes / DAY_MINUTES;
   return (
     <>
-      <b>{hours}h</b>
-      {hours >= 8 && <span className="muted"> · ~{days.toFixed(days < 10 ? 1 : 0)} workdays</span>}
+      <b>{formatDuration(minutes)}</b>
+      {minutes >= DAY_MINUTES && <span className="muted"> · ~{days.toFixed(days < 10 ? 1 : 0)} workdays</span>}
       <div className="muted small">This task plus everything it unlocks.</div>
     </>
   );
@@ -242,7 +243,7 @@ function DepSection({ title, subtitle, rows, onRemove, chipFor, footer }: {
               <span className="deprow__title">{t.title}</span>
               {rel && <span className={`chip chip--xs chip--rel-${rel.kind}`}>{rel.label}</span>}
               {t.isBlocked && <span className="chip chip--blocked chip--xs">blocked</span>}
-              <span className="muted deprow__h">{t.durationHours}h</span>
+              <span className="muted deprow__h">{formatDuration(t.durationMinutes)}</span>
               <button
                 className="iconbtn iconbtn--sm"
                 title="Remove dependency"
@@ -356,7 +357,7 @@ function SubtaskSection({ task }: { task: Task }) {
                   <StatusDot status={s.status} />
                   <span className="subrow__title">{s.title}</span>
                   {s.isBlocked && <span className="chip chip--blocked chip--xs">blocked</span>}
-                  <span className="muted subrow__h">{s.durationHours}h</span>
+                  <span className="muted subrow__h">{formatDuration(s.durationMinutes)}</span>
                   <button
                     className="iconbtn iconbtn--sm"
                     title="Move out of this task"
@@ -502,7 +503,7 @@ function AddPrerequisite({ task }: { task: Task }) {
                 >
                   <StatusDot status={c.status} />
                   <span className="picker__title">{c.title}</span>
-                  <span className="muted">{c.durationHours}h</span>
+                  <span className="muted">{formatDuration(c.durationMinutes)}</span>
                 </button>
               ))
             ) : (

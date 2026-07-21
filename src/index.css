@@ -1197,6 +1197,7 @@ h1, h2, h3, p { margin: 0; }
 
 .field__req { font-size: 11px; font-weight: 400; color: var(--text-faint); }
 .field__opt { font-size: 11px; font-weight: 400; color: var(--text-faint); }
+.field__hint { font-size: 12px; color: var(--text-faint); }
 
 .input {
   width: 100%;
@@ -1372,6 +1373,23 @@ h1, h2, h3, p { margin: 0; }
 .gbtns { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 
 .graph-hint { color: var(--text-faint); font-size: 12px; margin-right: 6px; white-space: nowrap; }
+
+.dur { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.dur__box { position: relative; display: block; }
+/* The unit sits inside the box so the three fields read as one control. */
+.dur__input { padding-right: 62px; text-align: right; }
+.dur__input::-webkit-outer-spin-button,
+.dur__input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.dur__input { -moz-appearance: textfield; appearance: textfield; }
+.dur__unit {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
 
 .seg--sm { margin-right: 4px; }
 .seg--sm .seg__btn { padding: 3px 10px; font-size: 12px; }

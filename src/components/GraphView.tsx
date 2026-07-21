@@ -36,6 +36,7 @@ import {
   type TaskGroup,
 } from '../types';
 import { ConnectionError, EmptyState, LoadingState, StatusDot } from './ui';
+import { formatDuration } from '../lib/duration';
 
 interface Transform { tx: number; ty: number; k: number }
 
@@ -1358,7 +1359,7 @@ function TaskNode({ task, p, selected, dim, highlight, isCollapsed, hiddenCount,
       <circle className="gnode__dot" cx={-NODE_W / 2 + 20} cy={-10} r={4} />
       <text className="gnode__title" x={-NODE_W / 2 + 32} y={-6}>{truncate(task.title, 20)}</text>
       <text className="gnode__sub" x={-NODE_W / 2 + 32} y={16}>
-        {task.durationHours}h ·{' '}
+        {formatDuration(task.durationMinutes)} ·{' '}
         <tspan className={`gnode__imp--${task.importance}`}>{IMPORTANCE_LABEL[task.importance]}</tspan>
         {task.isBlocked && <tspan> · Blocked</tspan>}
       </text>
@@ -1474,7 +1475,7 @@ function SubtaskNode({ task, x, y, selected }: { task: Task; x: number; y: numbe
       <circle className="subnode__dot" cx={-SUB_W / 2 + 16} cy={-4} r={3.5} />
       <text className="subnode__title" x={-SUB_W / 2 + 28} y={-1}>{truncate(task.title, 17)}</text>
       <text className="subnode__sub" x={-SUB_W / 2 + 28} y={14}>
-        {task.durationHours}h
+        {formatDuration(task.durationMinutes)}
         {task.isBlocked && <tspan className="subnode__blocked"> · Blocked</tspan>}
       </text>
     </g>
@@ -2083,7 +2084,7 @@ function ArchiveViewer({ archive, fetchGraph, onClose }: {
                         <circle className="gnode__dot" cx={-NODE_W / 2 + 20} cy={-10} r={4} />
                         <text className="gnode__title" x={-NODE_W / 2 + 32} y={-6}>{truncate(n.title, 20)}</text>
                         <text className="gnode__sub" x={-NODE_W / 2 + 32} y={16}>
-                          {n.durationHours}h · {STATUS_LABEL[n.status]}
+                          {formatDuration(n.durationMinutes)} · {STATUS_LABEL[n.status]}
                         </text>
                       </g>
                     );
@@ -2103,7 +2104,7 @@ function ArchiveViewer({ archive, fetchGraph, onClose }: {
                 <StatusDot status={picked.status} />
                 <div className="archview__info-text">
                   <div className="archview__info-title">{picked.title}</div>
-                  <div className="muted small">{picked.durationHours}h · {STATUS_LABEL[picked.status]}</div>
+                  <div className="muted small">{formatDuration(picked.durationMinutes)} · {STATUS_LABEL[picked.status]}</div>
                 </div>
                 <button className="iconbtn" title="Close" onClick={() => setPicked(null)}><Icon name="x" /></button>
               </div>

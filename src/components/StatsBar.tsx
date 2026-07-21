@@ -1,6 +1,7 @@
 import { Icon } from '../icons';
 import { useTasks, useUI } from '../state';
 import type { TaskStatus } from '../types';
+import { formatDuration } from '../lib/duration';
 
 export function StatsBar() {
   const { status, tasks } = useTasks();
@@ -9,7 +10,7 @@ export function StatsBar() {
 
   const by = (s: TaskStatus) => tasks.filter((t) => t.status === s).length;
   const blocked = tasks.filter((t) => t.isBlocked).length;
-  const hours = tasks.reduce((sum, t) => sum + t.durationHours, 0);
+  const totalMinutes = tasks.reduce((sum, t) => sum + t.durationMinutes, 0);
   const done = by('COMPLETED');
   const pct = Math.round((done / tasks.length) * 100);
 
@@ -25,7 +26,7 @@ export function StatsBar() {
       <span className="stat stat--done">{done} completed</span>
       {by('EXPIRED') > 0 && <span className="stat stat--expired">{by('EXPIRED')} expired</span>}
       {blocked > 0 && <span className="stat stat--blocked">{blocked} blocked</span>}
-      <span className="stat stat--hours">{hours}h total</span>
+      <span className="stat stat--hours">{formatDuration(totalMinutes)} total</span>
       <div className="stats__spacer" />
       {view === 'board' && (
         <div className="search">

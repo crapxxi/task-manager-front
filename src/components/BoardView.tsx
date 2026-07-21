@@ -2,6 +2,7 @@ import { Icon } from '../icons';
 import { useTasks, useUI } from '../state';
 import { COMPLEXITY_LABEL, STATUS_ORDER, type Task, type TaskStatus } from '../types';
 import { AdvanceButton, ConnectionError, EmptyState, ImportanceChip, LoadingState, StatusBadge, SubtaskProgress } from './ui';
+import { formatDuration } from '../lib/duration';
 
 const COLUMN_LABEL: Record<TaskStatus, string> = {
   TODO: 'To Do',
@@ -119,7 +120,7 @@ function TaskCard({ task }: { task: Task }) {
       {task.description && <p className="card__desc">{task.description}</p>}
       <div className="card__meta">
         <ImportanceChip value={task.importance} />
-        <span className="meta" title="Estimated effort"><Icon name="clock" />{task.durationHours}h</span>
+        <span className="meta" title="Estimated effort"><Icon name="clock" />{formatDuration(task.durationMinutes)}</span>
         <span className={`meta meta--cx-${task.complexity.toLowerCase()}`} title="Complexity">{COMPLEXITY_LABEL[task.complexity]}</span>
         {pre > 0 && <span className="meta" title="Prerequisites"><Icon name="link" />{pre}</span>}
         {dep > 0 && <span className="meta" title="Unlocks"><Icon name="unlocks" />{dep}</span>}

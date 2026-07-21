@@ -2,6 +2,7 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import { Icon } from '../icons';
 import { useProjects, useTasks, useToast, useUI } from '../state';
 import { COMPLEXITY_LABEL, COMPLEXITY_ORDER, IMPORTANCE_LABEL, type Complexity, type Project, type Task } from '../types';
+import { MAX_DAYS, MAX_DURATION, MIN_DURATION, formatDurationParts, minutesToParts, partsToMinutes } from '../lib/duration';
 
 export function ModalHost() {
   const { form, projectForm, confirmRequest } = useUI();
@@ -37,7 +38,12 @@ function TaskFormModal({ task, presetParentId }: { task: Task | null; presetPare
 
   const [title, setTitle] = useState(task?.title ?? '');
   const [description, setDescription] = useState(task?.description ?? '');
-  const [duration, setDuration] = useState(task ? String(task.durationHours) : '');
+  // Kept as three strings so a field can sit empty while another is being typed;
+  // they collapse into a single minute count on submit, which is all the API sees.
+  const initialParts = minutesToParts(task?.durationMinutes ?? 0);
+  const [days, setDays] = useState(task && initialParts.days ? String(initialParts.days) : '');
+  const [hours, setHours] = useState(task && initialParts.hours ? String(initialParts.hours) : '');
+  const [mins, setMins] = useState(task && initialParts.minutes ? String(initialParts.minutes) : '');
   const [complexity, setComplexity] = useState<Complexity>(task?.complexity ?? 'MEDIUM');
   const [importance, setImportance] = useState(task?.importance ?? 0);
   const [groupId, setGroupId] = useState<number | null>(task?.groupId ?? null);
@@ -54,18 +60,29 @@ function TaskFormModal({ task, presetParentId }: { task: Task | null; presetPare
     : [];
   const presetParent = presetParentId != null ? byId.get(presetParentId) : undefined;
 
+  // A blank box means zero; anything unparseable poisons the whole total so the
+  // validation below catches it instead of silently dropping a field.
+  const part = (raw: string) => (raw.trim() === '' ? 0 : Number(raw));
+  const totalMinutes = partsToMinutes({ days: part(days), hours: part(hours), minutes: part(mins) });
+  const durationValid = Number.isInteger(totalMinutes) && totalMinutes >= MIN_DURATION && totalMinutes <= MAX_DURATION;
+
+  // Echo the total back, so 1d 2h reads as "= 600 minutes" before it is sent.
+  const durationHint = durationValid ? `= ${formatDurationParts(totalMinutes)} · ${totalMinutes} min` : null;
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     const t = title.trim();
-    const d = duration === '' ? NaN : Number(duration);
     const errors: string[] = [];
     if (!t) errors.push('Title is required.');
     if (t.length > 255) errors.push('Title must be 255 characters or fewer.');
     if (description.length > 10000) errors.push('Description is too long.');
-    if (!Number.isFinite(d) || !Number.isInteger(d) || d < 1 || d > 100) errors.push('Duration must be a whole number between 1 and 100 hours.');
+    if (!durationValid) {
+      errors.push(`Estimated effort must be between ${formatDurationParts(MIN_DURATION)} and ${formatDurationParts(MAX_DURATION)}.`);
+    }
     if (errors.length) { setErr(errors.join(' ')); return; }
+    const d = totalMinutes;
 
-    const body = { title: t, description: description.trim() || null, durationHours: d, complexity, importance, groupId, parentId };
+    const body = { title: t, description: description.trim() || null, durationMinutes: d, complexity, importance, groupId, parentId };
     setSaving(true);
     setErr(null);
     try {
@@ -123,19 +140,21 @@ function TaskFormModal({ task, presetParentId }: { task: Task | null; presetPare
             </select>
           </label>
         )}
-        <label className="field">
-          <span className="field__label">Estimated effort (hours)<span className="field__req">required</span></span>
-          <input
-            className="input"
-            type="number"
-            min={1}
-            max={100}
-            step={1}
-            placeholder="1–100"
-            value={duration}
-            onChange={(e) => setDuration(e.target.value)}
-          />
-        </label>
+        <div className="field">
+          <span className="field__label">
+            Estimated effort
+            <span className="field__req">required</span>
+          </span>
+          {/* Split into the units people actually estimate in; the API still gets one minute count. */}
+          <div className="dur">
+            <DurationBox label="days" max={MAX_DAYS} step={1} value={days} onChange={setDays} />
+            <DurationBox label="hours" max={23} step={1} value={hours} onChange={setHours} />
+            <DurationBox label="minutes" max={59} step={5} value={mins} onChange={setMins} />
+          </div>
+          <span className="field__hint">
+            {durationHint ?? `Between ${formatDurationParts(MIN_DURATION)} and ${formatDurationParts(MAX_DURATION)}.`}
+          </span>
+        </div>
         <div className="field">
           <span className="field__label">Complexity<span className="field__req">required</span></span>
           <div className="seg">
@@ -188,6 +207,29 @@ function TaskFormModal({ task, presetParentId }: { task: Task | null; presetPare
         </div>
       </form>
     </Modal>
+  );
+}
+
+/** One unit box of the days/hours/minutes trio. Digits only — the unit is the label. */
+function DurationBox({
+  label, max, step, value, onChange,
+}: { label: string; max: number; step: number; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="dur__box">
+      <input
+        className="input dur__input"
+        type="number"
+        inputMode="numeric"
+        min={0}
+        max={max}
+        step={step}
+        placeholder="0"
+        aria-label={`Estimated effort — ${label}`}
+        value={value}
+        onChange={(e) => onChange(e.target.value.replace(/[^\d]/g, ''))}
+      />
+      <span className="dur__unit">{label}</span>
+    </label>
   );
 }
 

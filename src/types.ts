@@ -71,13 +71,13 @@ export interface TaskResponse {
   id: number;
   title: string;
   description: string | null;
-  durationHours: number;
+  durationMinutes: number;
   status: TaskStatus;
   isBlocked: boolean;
   projectId: number;
   complexity: Complexity;
   importance: number;
-  /** Earliest possible finish hour on the critical path; only /suggest/tasks/{id}/time fills it. */
+  /** Earliest possible finish, in minutes on the critical path; only /suggest/tasks/{id}/time fills it. */
   calculatedTime: number | null;
   /** Timestamps are UTC instants ("2026-07-15T12:34:56Z"). */
   createdAt: string;
@@ -100,7 +100,7 @@ export interface TaskRequest {
   projectId: number;
   title: string;
   description: string | null;
-  durationHours: number;
+  durationMinutes: number;
   complexity: Complexity;
   importance: number;
   /** Optional group; null clears the assignment. */
@@ -118,7 +118,7 @@ export interface GraphNode {
   id: number;
   title: string;
   status: TaskStatus;
-  durationHours: number;
+  durationMinutes: number;
   isBlocked: boolean;
   /** How many tasks (transitively) this one unlocks via strict prerequisites. */
   influence: number;
@@ -168,7 +168,7 @@ export interface Task {
   id: number;
   title: string;
   description: string;
-  durationHours: number;
+  durationMinutes: number;
   status: TaskStatus;
   isBlocked: boolean;
   complexity: Complexity;

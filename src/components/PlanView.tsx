@@ -4,6 +4,7 @@ import { Icon } from '../icons';
 import { useProjects, useTasks, useUI } from '../state';
 import { COMPLEXITY_LABEL, type TaskWithTime } from '../types';
 import { ImportanceChip, StatusDot } from './ui';
+import { DAY_MINUTES, formatDuration } from '../lib/duration';
 
 interface PlanRow extends TaskWithTime {
   /** 1-based position in the suggested execution order. */
@@ -13,12 +14,12 @@ interface PlanRow extends TaskWithTime {
 type PlanState =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; rows: PlanRow[]; totalHours: number };
+  | { kind: 'ready'; rows: PlanRow[]; totalMinutes: number };
 
 /**
  * "Plan" view: the backend's suggested execution order for the project's
  * TODO tasks (topological sort of strict dependencies), each with the
- * earliest hour it can be finished, assuming work happens sequentially
+ * earliest time it can be finished, assuming work happens sequentially
  * along the critical path.
  */
 export function PlanView() {
@@ -30,7 +31,7 @@ export function PlanView() {
   // Refetch whenever the project's tasks change (status toggles, binds, edits…),
   // so the plan never shows stale ordering.
   const tasksSig = useMemo(
-    () => tasks.map((t) => `${t.id}:${t.status}:${t.isBlocked}:${t.durationHours}`).join(','),
+    () => tasks.map((t) => `${t.id}:${t.status}:${t.isBlocked}:${t.durationMinutes}`).join(','),
     [tasks],
   );
 
@@ -38,19 +39,19 @@ export function PlanView() {
     if (currentId == null) return;
     setState({ kind: 'loading' });
     try {
-      // Order comes from /suggest/tasks/{id}; finish hours from /time.
+      // Order comes from /suggest/tasks/{id}; finish minutes from /time.
       const [order, withTime] = await Promise.all([
         api.getSuggested(currentId),
         api.getTasksWithTime(currentId),
       ]);
-      const hourById = new Map(withTime.map((t) => [t.id, t.calculatedTime]));
+      const finishById = new Map(withTime.map((t) => [t.id, t.calculatedTime]));
       const rows: PlanRow[] = order.map((t, i) => ({
         ...t,
-        calculatedTime: hourById.get(t.id) ?? t.durationHours,
+        calculatedTime: finishById.get(t.id) ?? t.durationMinutes,
         position: i + 1,
       }));
-      const totalHours = withTime.reduce((max, t) => Math.max(max, t.calculatedTime ?? 0), 0);
-      setState({ kind: 'ready', rows, totalHours });
+      const totalMinutes = withTime.reduce((max, t) => Math.max(max, t.calculatedTime ?? 0), 0);
+      setState({ kind: 'ready', rows, totalMinutes });
     } catch (err) {
       setState({ kind: 'error', message: (err as Error).message });
     }
@@ -79,7 +80,7 @@ export function PlanView() {
     );
   }
 
-  const { rows, totalHours } = state;
+  const { rows, totalMinutes } = state;
 
   if (rows.length === 0) {
     return (
@@ -92,16 +93,16 @@ export function PlanView() {
     );
   }
 
-  const days = totalHours / 8;
+  const days = totalMinutes / DAY_MINUTES;
 
   return (
     <section className="view plan">
       <div className="plan__summary">
         <span className="plan__total">
-          Estimated total: <b>{totalHours}h</b>
-          {totalHours >= 8 && <span className="muted"> · ~{days.toFixed(days < 10 ? 1 : 0)} workdays</span>}
+          Estimated total: <b>{formatDuration(totalMinutes)}</b>
+          {totalMinutes >= DAY_MINUTES && <span className="muted"> · ~{days.toFixed(days < 10 ? 1 : 0)} workdays</span>}
         </span>
-        <span className="muted small">Suggested order for the remaining “To do” tasks. “Done by” is the earliest finish hour given the dependencies.</span>
+        <span className="muted small">Suggested order for the remaining “To do” tasks. “Done by” is the earliest finish time given the dependencies.</span>
       </div>
 
       <ol className="plan__list">
@@ -129,9 +130,9 @@ export function PlanView() {
                 {blocked && <span className="chip chip--blocked chip--xs">blocked</span>}
                 <ImportanceChip value={row.importance} />
                 <span className={`meta meta--cx-${row.complexity.toLowerCase()}`}>{COMPLEXITY_LABEL[row.complexity]}</span>
-                <span className="meta" title="Estimated effort"><Icon name="clock" />{row.durationHours}h</span>
-                <span className="planrow__finish" title="Earliest possible finish, counting prerequisite hours">
-                  done by <b>{row.calculatedTime}h</b>
+                <span className="meta" title="Estimated effort"><Icon name="clock" />{formatDuration(row.durationMinutes)}</span>
+                <span className="planrow__finish" title="Earliest possible finish, counting prerequisite work">
+                  done by <b>{formatDuration(row.calculatedTime)}</b>
                 </span>
               </button>
             </li>

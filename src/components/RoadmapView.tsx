@@ -4,17 +4,17 @@ import { Icon } from '../icons';
 import { useProjects, useTasks, useUI } from '../state';
 import { STATUS_LABEL, type Task } from '../types';
 import { groupColor } from '../lib/graph';
+import { DAY_MINUTES, formatDuration } from '../lib/duration';
 import { StatusDot } from './ui';
 
-/* Timeline geometry: the axis is working time from "now", 8h = 1 day. */
-const HOUR_W = 13;
-const DAY_HOURS = 8;
+/* Timeline geometry: the axis is working minutes from "now", 8h = 1 day. */
+const MIN_W = 13 / 60;
 const ROW_H = 40;
 const HEADER_H = 40;
 
 interface Bar {
   task: Task;
-  /** Working hours from now, derived from the critical-path schedule. */
+  /** Working minutes from now, derived from the critical-path schedule. */
   start: number;
   end: number;
   color: string;
@@ -44,7 +44,7 @@ export function RoadmapView() {
 
   // Refetch when anything that moves the schedule changes.
   const tasksSig = useMemo(
-    () => tasks.map((t) => `${t.id}:${t.status}:${t.durationHours}`).join(',') + '|' + edges.length,
+    () => tasks.map((t) => `${t.id}:${t.status}:${t.durationMinutes}`).join(',') + '|' + edges.length,
     [tasks, edges],
   );
 
@@ -69,10 +69,10 @@ export function RoadmapView() {
       if (t.status === 'COMPLETED' || t.status === 'EXPIRED') continue;
       const color = t.groupId != null ? groupColor(t.groupId) : 'var(--primary)';
       if (t.status === 'IN_PROGRESS') {
-        m.set(t.id, { task: t, start: 0, end: t.durationHours, color });
+        m.set(t.id, { task: t, start: 0, end: t.durationMinutes, color });
       } else {
-        const end = state.finishById.get(t.id) ?? t.durationHours;
-        m.set(t.id, { task: t, start: Math.max(0, end - t.durationHours), end, color });
+        const end = state.finishById.get(t.id) ?? t.durationMinutes;
+        m.set(t.id, { task: t, start: Math.max(0, end - t.durationMinutes), end, color });
       }
     }
     return m;
@@ -123,12 +123,12 @@ export function RoadmapView() {
     return list;
   }, [bars, groups]);
 
-  const totalHours = useMemo(
+  const totalMinutes = useMemo(
     () => [...bars.values()].reduce((m, b) => Math.max(m, b.end), 0),
     [bars],
   );
-  const days = Math.max(3, Math.ceil(totalHours / DAY_HOURS));
-  const tlW = days * DAY_HOURS * HOUR_W;
+  const days = Math.max(3, Math.ceil(totalMinutes / DAY_MINUTES));
+  const tlW = days * DAY_MINUTES * MIN_W;
 
   /** y-center of a task's row inside the timeline body (for connector arrows). */
   const rowCenter = useMemo(() => {
@@ -146,8 +146,8 @@ export function RoadmapView() {
       const y1 = rowCenter.get(e.sourceId);
       const y2 = rowCenter.get(e.targetId);
       if (!src || !tgt || y1 == null || y2 == null) continue;
-      const x1 = src.end * HOUR_W;
-      const x2 = tgt.start * HOUR_W;
+      const x1 = src.end * MIN_W;
+      const x2 = tgt.start * MIN_W;
       const bend = Math.max(18, Math.min(40, Math.abs(x2 - x1) / 2));
       list.push({
         id: e.id,
@@ -198,8 +198,8 @@ export function RoadmapView() {
     <section className="view roadmap">
       <div className="roadmap__summary">
         <span className="plan__total">
-          Remaining: <b>{totalHours}h</b>
-          {totalHours >= DAY_HOURS && <span className="muted"> · ~{(totalHours / DAY_HOURS).toFixed(totalHours / DAY_HOURS < 10 ? 1 : 0)} workdays</span>}
+          Remaining: <b>{formatDuration(totalMinutes)}</b>
+          {totalMinutes >= DAY_MINUTES && <span className="muted"> · ~{(totalMinutes / DAY_MINUTES).toFixed(totalMinutes / DAY_MINUTES < 10 ? 1 : 0)} workdays</span>}
         </span>
         <span className="muted small">
           Bars follow the dependency schedule: each task at its earliest slot on the critical path, 8h = 1 day. Arrows are strict prerequisites.
@@ -229,7 +229,7 @@ export function RoadmapView() {
                 <StatusDot status={r.bar.task.status} />
                 <span className="roadmap__lname">{r.bar.task.title}</span>
                 {r.bar.task.isBlocked && <span className="chip chip--blocked chip--xs">blocked</span>}
-                <span className="muted small roadmap__lh">{r.bar.task.durationHours}h</span>
+                <span className="muted small roadmap__lh">{formatDuration(r.bar.task.durationMinutes)}</span>
               </button>
             ),
           )}
@@ -239,16 +239,16 @@ export function RoadmapView() {
         <div className="roadmap__tl" style={{ width: tlW }}>
             <div className="roadmap__days" style={{ height: HEADER_H }}>
               {Array.from({ length: days }, (_, d) => (
-                <div key={d} className="roadmap__day" style={{ width: DAY_HOURS * HOUR_W }}>
+                <div key={d} className="roadmap__day" style={{ width: DAY_MINUTES * MIN_W }}>
                   <span>Day {d + 1}</span>
-                  <span className="muted">+{(d + 1) * DAY_HOURS}h</span>
+                  <span className="muted">+{formatDuration((d + 1) * DAY_MINUTES)}</span>
                 </div>
               ))}
             </div>
 
             <div className="roadmap__grid" style={{ height: bodyH }}>
               {Array.from({ length: days - 1 }, (_, d) => (
-                <div key={d} className="roadmap__grid-line" style={{ left: (d + 1) * DAY_HOURS * HOUR_W }} />
+                <div key={d} className="roadmap__grid-line" style={{ left: (d + 1) * DAY_MINUTES * MIN_W }} />
               ))}
               {rows.map((r, i) =>
                 r.kind === 'group' ? (
@@ -290,8 +290,8 @@ export function RoadmapView() {
                     className={`roadbar ${r.bar.task.status === 'IN_PROGRESS' ? 'roadbar--progress' : ''} ${selectedId === r.bar.task.id ? 'is-active' : ''}`}
                     style={{
                       top: i * ROW_H + 6,
-                      left: r.bar.start * HOUR_W,
-                      width: Math.max((r.bar.end - r.bar.start) * HOUR_W, 26),
+                      left: r.bar.start * MIN_W,
+                      width: Math.max((r.bar.end - r.bar.start) * MIN_W, 26),
                       background: r.bar.color,
                     }}
                     onClick={() => select(r.bar.task.id)}
